@@ -1103,15 +1103,16 @@ public class HealthPlugin extends CordovaPlugin {
           for (DataPoint datapoint : dataset.getDataPoints()) {
             atleastone = true;
             if (datatype.equalsIgnoreCase("steps")) {
+              DataSource origDataSource = datapoint.getOriginalDataSource();
+              String origIdentifier = origDataSource.getStreamIdentifier();
               if (filtered) {
-                DataSource origDataSource = datapoint.getOriginalDataSource();
-                String origIdentifier = origDataSource.getStreamIdentifier();
                 if (origIdentifier.contains("user_input")) {
                   continue;
                 }
               }
               int nsteps = datapoint.getValue(Field.FIELD_STEPS).asInt();
               int osteps = retBucket.getInt("value");
+              retBucket.put("sourceName", origDataSource.getStreamName() + "_" + origDataSource.getStreamIdentifier() );
               retBucket.put("value", osteps + nsteps);
             } else if (datatype.equalsIgnoreCase("distance")) {
               float ndist = datapoint.getValue(Field.FIELD_DISTANCE).asFloat();

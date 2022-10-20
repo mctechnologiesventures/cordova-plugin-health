@@ -1495,7 +1495,7 @@ static NSString *const HKPluginKeyUUID = @"UUID";
         statOpt = HKStatisticsOptionDiscreteAverage;
 
     } else { //HKQuantityTypeIdentifierStepCount, etc...
-        statOpt = HKStatisticsOptionCumulativeSum;
+        statOpt = HKStatisticsOptionCumulativeSum | HKStatisticsOptionSeparateBySource;
     }
 
     HKUnit *unit = nil;
@@ -1557,7 +1557,13 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                                                    entry[HKPluginKeyEndDate] = [HealthKit stringFromDate:valueEndDate];
 
                                                    HKQuantity *quantity = nil;
-                                                   switch (statOpt) {
+                                                   BOOL differentSource = NO;
+                                                   HKStatisticsOptions tempStatOpt = statOpt;
+                                                   if (statOpt & HKStatisticsOptionSeparateBySource) {
+                                                       differentSource = YES;
+                                                       tempStatOpt = tempStatOpt & ~HKStatisticsOptionSeparateBySource;
+                                                   }
+                                                   switch (tempStatOpt) {
                                                        case HKStatisticsOptionDiscreteAverage:
                                                            quantity = result.averageQuantity;
                                                            break;
@@ -1570,15 +1576,17 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                                                        case HKStatisticsOptionDiscreteMax:
                                                            quantity = result.maximumQuantity;
                                                            break;
-
-                                                           // @TODO return appropriate values here
-                                                       case HKStatisticsOptionSeparateBySource:
                                                        case HKStatisticsOptionNone:
                                                        default:
                                                            break;
                                                    }
-
                                                    double value = [quantity doubleValueForUnit:unit];
+                                                   if (value > 0 && differentSource) {
+                                                       if ([[result sources] count] > 0) {
+                                                           HKSource* source = [[result sources] firstObject];
+                                                           entry[HKPluginKeySourceName] = [NSString stringWithFormat:@"%@_%@", [source name], [source bundleIdentifier]];
+                                                       }
+                                                   }
                                                    entry[@"quantity"] = @(value);
                                                    [finalResults addObject:entry];
                                                }];

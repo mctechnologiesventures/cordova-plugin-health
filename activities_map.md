@@ -102,13 +102,10 @@ This means that, for example, if you try to save "aerobics" in an iOS applicatio
 |	skiing.kite	|	SKIING_KITE	|	HKWorkoutActivityTypeSnowSports	|
 |	skiing.roller	|	SKIING_ROLLER	|	HKWorkoutActivityTypeSnowSports	|
 |	sledding	|	SLEDDING	|	HKWorkoutActivityTypeSnowSports	|
-|	sleep	|	SLEEP	|	HKCategoryValueSleepAnalysisAsleep	|
-|	sleep.light	|	SLEEP_LIGHT	|	HKCategoryValueSleepAnalysisAsleep	|
-|	sleep.deep	|	SLEEP_DEEP	|	HKCategoryValueSleepAnalysisAsleep	|
-|	sleep.rem	|	SLEEP_REM	|	HKCategoryValueSleepAnalysisAsleep	|
-|	sleep.inBed	|	AWAKE	|	HKCategoryValueSleepAnalysisInBed	|
-|	sleep.awake	|	AWAKE	|	HKCategoryValueSleepAnalysisAwake	|
-|	sleep.outOfBed	|	OUT_OF_BED	|	NA	|
+|	sleep (deprecated use sleep type instead) |   SLEEP  | NA |
+|	sleep.light (deprecated use sleep type instead) |	SLEEP_LIGHT	| 	NA  |
+|	sleep.deep (deprecated use sleep type instead) |	SLEEP_DEEP	| 	NA  |
+|	sleep.rem  (deprecated use sleep type instead) |	SLEEP_REM	| 	NA |
 |	snowboarding	|	SNOWBOARDING	|	HKWorkoutActivityTypeSnowboarding	|
 |	snowmobile	|	SNOWMOBILE	|	HKWorkoutActivityTypeSnowSports	|
 |	snowshoeing	|	SNOWSHOEING	|	HKWorkoutActivityTypeSnowSports	|

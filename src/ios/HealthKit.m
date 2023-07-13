@@ -410,7 +410,10 @@ static NSString *const HKPluginKeyUUID = @"UUID";
       @"HKCategoryTypeIdentifierSleepAnalysis":@{
         @"HKCategoryValueSleepAnalysisInBed":@(HKCategoryValueSleepAnalysisInBed),
         @"HKCategoryValueSleepAnalysisAsleep":@(HKCategoryValueSleepAnalysisAsleep),
-        @"HKCategoryValueSleepAnalysisAwake":@(HKCategoryValueSleepAnalysisAwake)
+        @"HKCategoryValueSleepAnalysisAwake":@(HKCategoryValueSleepAnalysisAwake),
+        @"HKCategoryValueSleepAnalysisAsleepCore":@(HKCategoryValueSleepAnalysisAsleepCore),
+        @"HKCategoryValueSleepAnalysisAsleepDeep":@(HKCategoryValueSleepAnalysisAsleepDeep),
+        @"HKCategoryValueSleepAnalysisAsleepREM":@(HKCategoryValueSleepAnalysisAsleepREM)
       }
     };
 
@@ -653,7 +656,7 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     HKWorkoutActivityType activityTypeEnum = [WorkoutActivityConversion convertStringToHKWorkoutActivityType:activityType];
 
     BOOL requestReadPermission = (args[@"requestReadPermission"] == nil || [args[@"requestReadPermission"] boolValue]);
-    BOOL *cycling = (args[@"cycling"] == nil || [args[@"cycling"] boolValue]);
+    BOOL *cycling = (args[@"cycling"] != nil && [args[@"cycling"] boolValue]);
 
     // optional energy
     NSNumber *energy = args[@"energy"];
@@ -720,27 +723,43 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                 if (success_save) {
                     // now store the samples, so it shows up in the health app as well (pass this in as an option?)
                     if (energy != nil || distance != nil) {
-                        HKQuantitySample *sampleActivity = nil;
-                        if(cycling != nil && cycling){
-                            sampleActivity = [HKQuantitySample quantitySampleWithType:[HKQuantityType quantityTypeForIdentifier:
-                                            HKQuantityTypeIdentifierDistanceCycling]
+                        HKQuantitySample *sampleDistance = nil;
+                        if(distance != nil) {
+                            if(cycling != nil && cycling){
+                                sampleDistance = [HKQuantitySample quantitySampleWithType:[HKQuantityType quantityTypeForIdentifier:
+                                                HKQuantityTypeIdentifierDistanceCycling]
                                                                                             quantity:nrOfDistanceUnits
                                                                                             startDate:startDate
                                                                                                 endDate:endDate];
-                        } else {
-                            sampleActivity = [HKQuantitySample quantitySampleWithType:[HKQuantityType quantityTypeForIdentifier:
-                                            HKQuantityTypeIdentifierDistanceWalkingRunning]
+                            } else {
+                                sampleDistance = [HKQuantitySample quantitySampleWithType:[HKQuantityType quantityTypeForIdentifier:
+                                                HKQuantityTypeIdentifierDistanceWalkingRunning]
                                                                                             quantity:nrOfDistanceUnits
                                                                                             startDate:startDate
                                                                                                 endDate:endDate];
 
+                            }
                         }
-                        HKQuantitySample *sampleCalories = [HKQuantitySample quantitySampleWithType:[HKQuantityType quantityTypeForIdentifier:
-                                        HKQuantityTypeIdentifierActiveEnergyBurned]
+                        HKQuantitySample *sampleCalories = nil;
+                        if(energy != nil) {
+                            sampleCalories = [HKQuantitySample quantitySampleWithType:[HKQuantityType     quantityTypeForIdentifier:
+                                            HKQuantityTypeIdentifierActiveEnergyBurned]
                                                                                            quantity:nrOfEnergyUnits
                                                                                           startDate:startDate
                                                                                             endDate:endDate];
-                        NSArray *samples = @[sampleActivity, sampleCalories];
+                        }
+                         NSArray *samples = nil;
+                         if (energy != nil &&  distance != nil) { 
+                            // both distance and energy
+                            samples = @[sampleDistance, sampleCalories];
+                         } else if (energy != nil &&  distance == nil) { 
+                            // only energy
+                            samples = @[sampleCalories];
+                         } else if (energy == nil &&  distance != nil) {
+                            // only distance
+                            samples = @[sampleDistance];
+                         }
+                        
 
                         [[HealthKit sharedHealthStore] addSamples:samples toWorkout:workout completion:^(BOOL success_addSamples, NSError *mostInnerError) {
                             if (success_addSamples) {
@@ -777,11 +796,14 @@ static NSString *const HKPluginKeyUUID = @"UUID";
  * @param command *CDVInvokedUrlCommand
  */
 - (void)findWorkouts:(CDVInvokedUrlCommand *)command {
+    NSMutableDictionary *args = command.arguments[0];
     NSPredicate *workoutPredicate = nil;
     // TODO if a specific workouttype was passed, use that
     //  if (false) {
     //    workoutPredicate = [HKQuery predicateForWorkoutsWithWorkoutActivityType:HKWorkoutActivityTypeCycling];
     //  }
+
+    BOOL *includeCalsAndDist = (args[@"includeCalsAndDist"] != nil && [args[@"includeCalsAndDist"] boolValue]);
 
     NSSet *types = [NSSet setWithObjects:[HKWorkoutType workoutType], nil];
     [[HealthKit sharedHealthStore] requestAuthorizationToShareTypes:nil readTypes:types completion:^(BOOL success, NSError *error) {
@@ -812,28 +834,42 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                             //@TODO Update deprecated API call
                             source = workout.source;
                         }
+                        NSMutableDictionary *entry;
 
-                        // TODO: use a float value, or switch to metric
-                        double miles = [workout.totalDistance doubleValueForUnit:[HKUnit meterUnit]];
-                        NSString *milesString = [NSString stringWithFormat:@"%ld", (long) miles];
+                        if(includeCalsAndDist != nil && includeCalsAndDist) {
+                            double meters = [workout.totalDistance doubleValueForUnit:[HKUnit meterUnit]];
+                            NSString *metersString = [NSString stringWithFormat:@"%ld", (long) meters];
 
-                        // Parse totalEnergyBurned in kilocalories
-                        double cals = [workout.totalEnergyBurned doubleValueForUnit:[HKUnit kilocalorieUnit]];
-                        NSString *calories = [[NSNumber numberWithDouble:cals] stringValue];
+                            // Parse totalEnergyBurned in kilocalories
+                            double cals = [workout.totalEnergyBurned doubleValueForUnit:[HKUnit kilocalorieUnit]];
+                            NSString *calories = [[NSNumber numberWithDouble:cals] stringValue];
 
-                        NSMutableDictionary *entry = [
+                            entry = [
                                 @{
                                         @"duration": @(workout.duration),
                                         HKPluginKeyStartDate: [HealthKit stringFromDate:workout.startDate],
                                         HKPluginKeyEndDate: [HealthKit stringFromDate:workout.endDate],
-                                        @"distance": milesString,
+                                        @"distance": metersString,
                                         @"energy": calories,
                                         HKPluginKeySourceBundleId: source.bundleIdentifier,
                                         HKPluginKeySourceName: source.name,
                                         @"activityType": workoutActivity,
                                         @"UUID": [workout.UUID UUIDString]
                                 } mutableCopy
-                        ];
+                            ];
+                        }  else {
+                            entry = [
+                                @{
+                                        @"duration": @(workout.duration),
+                                        HKPluginKeyStartDate: [HealthKit stringFromDate:workout.startDate],
+                                        HKPluginKeyEndDate: [HealthKit stringFromDate:workout.endDate],
+                                        HKPluginKeySourceBundleId: source.bundleIdentifier,
+                                        HKPluginKeySourceName: source.name,
+                                        @"activityType": workoutActivity,
+                                        @"UUID": [workout.UUID UUIDString]
+                                } mutableCopy
+                            ];
+                        }
 
                         [finalResults addObject:entry];
                     }
@@ -1359,8 +1395,20 @@ static NSString *const HKPluginKeyUUID = @"UUID";
             unit = [HKUnit unitFromString:unitString];
         }
     }
+
     // TODO check that unit is compatible with sampleType if sample type of HKQuantityType
-    NSPredicate *predicate = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
+    NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
+    NSPredicate *predicate2 = nil;
+
+    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
+    if (filterOutUserInput) {
+        predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
+    }
+
+    // only include the user input predicate if it is not nil
+    NSArray *predicates = predicate2 != nil ? @[predicate1, predicate2] : @[predicate1];
+
+    NSCompoundPredicate *compoundPredicate = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
 
     NSSet *requestTypes = [NSSet setWithObjects:type, nil];
     [[HealthKit sharedHealthStore] requestAuthorizationToShareTypes:nil readTypes:requestTypes completion:^(BOOL success, NSError *error) {
@@ -1369,7 +1417,7 @@ static NSString *const HKPluginKeyUUID = @"UUID";
             NSString *endKey = HKSampleSortIdentifierEndDate;
             NSSortDescriptor *endDateSort = [NSSortDescriptor sortDescriptorWithKey:endKey ascending:ascending];
             HKSampleQuery *query = [[HKSampleQuery alloc] initWithSampleType:type
-                                                                   predicate:predicate
+                                                                   predicate:compoundPredicate
                                                                        limit:limit
                                                              sortDescriptors:@[endDateSort]
                                                               resultsHandler:^(HKSampleQuery *sampleQuery,
@@ -1514,20 +1562,25 @@ static NSString *const HKPluginKeyUUID = @"UUID";
         return;
     }
 
-    // NSPredicate *predicate = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
-    NSPredicate *predicate = nil;
+    NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
+    NSPredicate *predicate2 = nil;
 
-    BOOL filtered = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
-    if (filtered) {
-        predicate = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
+    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
+    if (filterOutUserInput) {
+        predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
     }
+
+    // only include the user input predicate if it is not nil
+    NSArray *predicates = predicate2 != nil ? @[predicate1, predicate2] : @[predicate1];
+
+    NSCompoundPredicate *compoundPredicate = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
 
     NSSet *requestTypes = [NSSet setWithObjects:type, nil];
     [[HealthKit sharedHealthStore] requestAuthorizationToShareTypes:nil readTypes:requestTypes completion:^(BOOL success, NSError *error) {
         __block HealthKit *bSelf = self;
         if (success) {
             HKStatisticsCollectionQuery *query = [[HKStatisticsCollectionQuery alloc] initWithQuantityType:quantityType
-                                                                                   quantitySamplePredicate:predicate
+                                                                                   quantitySamplePredicate:compoundPredicate
                                                                                                    options:statOpt
                                                                                                 anchorDate:anchorDate
                                                                                         intervalComponents:interval];

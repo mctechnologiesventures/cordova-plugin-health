@@ -549,8 +549,10 @@ public class HealthPlugin extends CordovaPlugin {
     for (DataSet dataset : datasets) {
       for (DataPoint datapoint : dataset.getDataPoints()) {
         JSONObject obj = new JSONObject();
-        obj.put("startDate", datapoint.getStartTime(TimeUnit.MILLISECONDS));
-        obj.put("endDate", datapoint.getEndTime(TimeUnit.MILLISECONDS));
+        long datapointStartTime = datapoint.getStartTime(TimeUnit.MILLISECONDS);
+        long datapointEndTime = datapoint.getEndTime(TimeUnit.MILLISECONDS);
+        obj.put("startDate", datapointStartTime);
+        obj.put("endDate", datapointEndTime);
         DataSource dataSource = datapoint.getOriginalDataSource();
         if (dataSource != null) {
           String sourceBundleId = dataSource.getAppPackageName();
@@ -684,7 +686,7 @@ public class HealthPlugin extends CordovaPlugin {
             obj.put("distance", totaldistance);
             obj.put("calories", totalcalories);
           }
-
+          obj.put("duration", datapointEndTime - datapointStartTime);
         } else if (dt.equals(HealthDataTypes.TYPE_OXYGEN_SATURATION)) {
           float oxysat = -1;
           if (datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION) != null)
@@ -696,8 +698,8 @@ public class HealthPlugin extends CordovaPlugin {
             JSONObject supoxy = new JSONObject();
             if (datapoint.getValue(HealthFields.FIELD_SUPPLEMENTAL_OXYGEN_FLOW_RATE) != null) {
               float flowrate = datapoint.getValue(HealthFields.FIELD_SUPPLEMENTAL_OXYGEN_FLOW_RATE).asFloat();
-              if (flowrate >= 0) { 
-                supoxy.put("flow_rate", flowrate); 
+              if (flowrate >= 0) {
+                supoxy.put("flow_rate", flowrate);
               }
             }
             if (datapoint.getValue(HealthFields.FIELD_OXYGEN_THERAPY_ADMINISTRATION_MODE) != null) {
@@ -1178,6 +1180,7 @@ public class HealthPlugin extends CordovaPlugin {
             // initialise an empty object (will be filled in later)
             retBucket.put("value", new JSONObject());
           }
+          retBucket.put("duration", et-st);
         } else if (datatype.equalsIgnoreCase("nutrition.water")) {
           retBucket.put("unit", "ml");
         } else if (datatype.equalsIgnoreCase("nutrition")) {
@@ -1227,6 +1230,9 @@ public class HealthPlugin extends CordovaPlugin {
                 // initialise an empty object (will be filled in later)
                 retBucket.put("value", new JSONObject());
               }
+              long bucketStartTime = bucket.getStartTime(TimeUnit.MILLISECONDS);
+              long bucketEndTime = bucket.getEndTime(TimeUnit.MILLISECONDS);
+              retBucket.put("duration", bucketEndTime - bucketStartTime);
             } else if (datatype.equalsIgnoreCase("nutrition.water")) {
               retBucket.put("unit", "ml");
             } else if (datatype.equalsIgnoreCase("nutrition")) {

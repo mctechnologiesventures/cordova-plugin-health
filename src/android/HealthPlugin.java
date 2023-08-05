@@ -353,7 +353,7 @@ public class HealthPlugin extends CordovaPlugin {
           if (err != null) {
             message = err.getMessage();
             if (err.getCause() != null) {
-          err.getCause().printStackTrace();
+              // err.getCause().printStackTrace();
             }
           }
           callbackContext.error("cannot disconnect," + message);
@@ -1653,7 +1653,7 @@ public class HealthPlugin extends CordovaPlugin {
         callbackContext.success();
       })
       .addOnFailureListener(err -> {
-        err.getCause().printStackTrace();
+        // err.getCause().printStackTrace();
         callbackContext.error(err.getMessage());
       });
   }
@@ -1693,7 +1693,7 @@ public class HealthPlugin extends CordovaPlugin {
         callbackContext.success();
       })
       .addOnFailureListener(err -> {
-        err.getCause().printStackTrace();
+        // err.getCause().printStackTrace();
         callbackContext.error(err.getMessage());
       });
   }

@@ -106,6 +106,7 @@
     <config-file target="res/xml/config.xml" parent="/*">
       <feature name="health">
         <param name="android-package" value="org.apache.cordova.health.HealthPlugin" />
+        <param name="onload" value="true"/>
       </feature>
       <access origin="https://accounts.google.com/*" />
     </config-file>

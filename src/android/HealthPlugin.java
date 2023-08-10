@@ -1,11 +1,8 @@
 package org.apache.cordova.health;
 
-import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.util.Log;
 
 import androidx.activity.result.ActivityResultCallback;
@@ -13,44 +10,20 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContract;
 import androidx.annotation.NonNull;
 import androidx.health.connect.client.HealthConnectClient;
+import androidx.health.connect.client.aggregate.AggregateMetric;
+import androidx.health.connect.client.aggregate.AggregationResult;
+import androidx.health.connect.client.aggregate.AggregationResultGroupedByDuration;
+import androidx.health.connect.client.aggregate.AggregationResultGroupedByPeriod;
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest;
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest;
+import androidx.health.connect.client.request.AggregateRequest;
+import androidx.health.connect.client.request.ReadRecordsRequest;
 import androidx.health.connect.client.PermissionController;
 import androidx.health.connect.client.permission.HealthPermission;
-import androidx.health.connect.client.records.BloodGlucoseRecord;
-import androidx.health.connect.client.records.BloodPressureRecord;
-import androidx.health.connect.client.records.BodyFatRecord;
-import androidx.health.connect.client.records.DistanceRecord;
-import androidx.health.connect.client.records.ExerciseSessionRecord;
-import androidx.health.connect.client.records.HeartRateRecord;
-import androidx.health.connect.client.records.HeightRecord;
-import androidx.health.connect.client.records.HydrationRecord;
-import androidx.health.connect.client.records.NutritionRecord;
-import androidx.health.connect.client.records.OxygenSaturationRecord;
-import androidx.health.connect.client.records.SleepSessionRecord;
 import androidx.health.connect.client.records.StepsRecord;
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord;
-import androidx.health.connect.client.records.WeightRecord;
 import androidx.health.connect.client.records.metadata.DataOrigin;
-import androidx.health.connect.client.request.ReadRecordsRequest;
+import androidx.health.connect.client.response.ReadRecordsResponse;
 import androidx.health.connect.client.time.TimeRangeFilter;
-
-import com.google.android.gms.fitness.data.Bucket;
-import com.google.android.gms.fitness.data.DataPoint;
-import com.google.android.gms.fitness.data.DataSet;
-import com.google.android.gms.fitness.data.DataSource;
-import com.google.android.gms.fitness.data.DataType;
-import com.google.android.gms.fitness.data.Field;
-import com.google.android.gms.fitness.data.HealthDataTypes;
-import com.google.android.gms.fitness.data.HealthFields;
-import com.google.android.gms.fitness.data.Session;
-import com.google.android.gms.fitness.data.SleepStages;
-import com.google.android.gms.fitness.data.Value;
-import com.google.android.gms.fitness.request.DataDeleteRequest;
-import com.google.android.gms.fitness.request.DataReadRequest;
-import com.google.android.gms.fitness.request.SessionReadRequest;
-import com.google.android.gms.fitness.result.DataReadResponse;
-import com.google.android.gms.fitness.result.SessionReadResponse;
-import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
@@ -61,17 +34,14 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
+import java.time.LocalDateTime;
+import java.time.Period;
+import java.time.ZoneId;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import kotlin.coroutines.Continuation;
 import kotlin.coroutines.CoroutineContext;
@@ -92,45 +62,21 @@ public class HealthPlugin extends CordovaPlugin {
 
   // instance of the call back when requesting or checking authorisation
   private CallbackContext authReqCallbackCtx;
-
-  private static final int REQUEST_OAUTH = 1;
   private static final int REQUEST_DYN_PERMS = 2;
 
   private final HashSet<String> authReadTypes = new HashSet<>();
   private final HashSet<String> authReadWriteTypes = new HashSet<>();
-  private boolean authAutoresolve;
-
 
 
   private HealthConnectClient healthClient;
   private ActivityResultLauncher requestPermissionLauncher;
 
   private Set<String> requestedPermissions = new HashSet<>();
-  public static Map<String, KClass> datatypes = new HashMap<String, KClass>();
-
-  static {
-    datatypes.put("steps", Reflection.getOrCreateKotlinClass(StepsRecord.class));
-    datatypes.put("calories", Reflection.getOrCreateKotlinClass(TotalCaloriesBurnedRecord.class));
-    datatypes.put("calories.basal", Reflection.getOrCreateKotlinClass(TotalCaloriesBurnedRecord.class));
-    datatypes.put("activity", Reflection.getOrCreateKotlinClass(ExerciseSessionRecord.class));
-    datatypes.put("height", Reflection.getOrCreateKotlinClass(HeightRecord.class));
-    datatypes.put("weight", Reflection.getOrCreateKotlinClass(WeightRecord.class));
-    datatypes.put("heart_rate", Reflection.getOrCreateKotlinClass(HeartRateRecord.class));
-    datatypes.put("fat_percentage", Reflection.getOrCreateKotlinClass(BodyFatRecord.class));
-    datatypes.put("distance", Reflection.getOrCreateKotlinClass(DistanceRecord.class));
-    datatypes.put("oxygen_saturation", Reflection.getOrCreateKotlinClass(OxygenSaturationRecord.class));
-    datatypes.put("blood_glucose", Reflection.getOrCreateKotlinClass(BloodGlucoseRecord.class));
-    datatypes.put("blood_pressure", Reflection.getOrCreateKotlinClass(BloodPressureRecord.class));
-    datatypes.put("sleep", Reflection.getOrCreateKotlinClass(SleepSessionRecord.class));
-    datatypes.put("nutrition", Reflection.getOrCreateKotlinClass(NutritionRecord.class));
-    datatypes.put("nutrition.water", Reflection.getOrCreateKotlinClass(HydrationRecord.class));
-  }
 
   public HealthPlugin() {
   }
 
   void onNewPermissionResult(Set<String> granted) {
-    Log.e(TAG, "onNewPermissionResult: " + granted);
     if (granted.size() == 0) {
       return;
     }
@@ -141,12 +87,8 @@ public class HealthPlugin extends CordovaPlugin {
       // Lack of required permissions
       authReqCallbackCtx.error("Not all permissions not granted");
     }
-//    if (granted.containsAll(dynPerms)) {
-//      // Permissions successfully granted
-//    } else {
-//      // Lack of required permissions
-//    }
   }
+
   // general initialization
   @Override
   public void initialize(CordovaInterface cordova, CordovaWebView webView) {
@@ -171,6 +113,7 @@ public class HealthPlugin extends CordovaPlugin {
     if (authReadTypes.contains("steps")) {
       requestedPermissions.add(HealthPermission.getReadPermission(Reflection.getOrCreateKotlinClass(StepsRecord.class)));
     }
+
 //    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 //      // new Android 10 permissions
 //      if (authReadTypes.contains("steps") || authReadTypes.contains("activity")
@@ -200,18 +143,6 @@ public class HealthPlugin extends CordovaPlugin {
 //        authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, false));
 //      }
 //    }
-
-    ActivityResultContract requestPermissionActivityContract  =  PermissionController.createRequestPermissionResultContract();
-//    ActivityResultLauncher requestPermissionLauncher = this.cordova.getActivity().registerForActivityResult(requestPermissionActivityContract, new ActivityResultCallback<Set<String>>() {
-//      @Override
-//      public void onActivityResult(Set<String> granted) {
-//        if (granted.containsAll(dynPerms)) {
-//          // Permissions successfully granted
-//        } else {
-//          // Lack of required permissions
-//        }
-//      }
-//    });
 
     healthClient.getPermissionController().getGrantedPermissions(
       new Continuation<Set<String>>() {
@@ -279,7 +210,7 @@ public class HealthPlugin extends CordovaPlugin {
         @Override
         public void run() {
           try {
-            checkAuthorization(args, callbackContext, true); // with autoresolve
+            checkAuthorization(args, callbackContext); // with autoresolve
           } catch (Exception ex) {
             callbackContext.error(ex.getMessage());
           }
@@ -291,7 +222,7 @@ public class HealthPlugin extends CordovaPlugin {
         @Override
         public void run() {
           try {
-            checkAuthorization(args, callbackContext, false); // without autoresolve
+            checkAuthorization(args, callbackContext); // without autoresolve
           } catch (Exception ex) {
             callbackContext.error(ex.getMessage());
           }
@@ -303,7 +234,7 @@ public class HealthPlugin extends CordovaPlugin {
         @Override
         public void run() {
           try {
-            checkAuthorization(args, callbackContext, false); // without autoresolve
+            checkAuthorization(args, callbackContext); // without autoresolve
           } catch (Exception ex) {
             callbackContext.error(ex.getMessage());
           }
@@ -420,10 +351,9 @@ public class HealthPlugin extends CordovaPlugin {
   // check if the app is authorised to use Google fitness APIs
   // if autoresolve is set, it will try to get authorisation from the user
   // also includes some OS dynamic permissions if needed (eg location)
-  private void checkAuthorization(final JSONArray args, final CallbackContext callbackContext, final boolean autoresolve) throws JSONException {
+  private void checkAuthorization(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
     this.cordova.setActivityResultCallback(this);
     authReqCallbackCtx = callbackContext;
-    authAutoresolve = autoresolve;
 
     // build the read and read-write sets
     authReadTypes.clear();
@@ -455,6 +385,179 @@ public class HealthPlugin extends CordovaPlugin {
     requestDynamicPermissions();
   }
 
+  private void queryRawData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered, final int limit,
+                            final Set<DataOrigin> dataOrigins ) {
+
+    final KClass dt = HealthDataConvertor.getDataType(datatype);
+    final Instant startInstant = Instant.ofEpochMilli(st);
+    final Instant endInstant = Instant.ofEpochMilli(et);
+
+    ReadRecordsRequest readRecordsRequest = new ReadRecordsRequest(
+      dt,
+      TimeRangeFilter.between(startInstant, endInstant),
+      dataOrigins,
+      true,
+      limit,
+      null
+
+    );
+    healthClient.readRecords(readRecordsRequest,
+      new Continuation<Object>() {
+        @NonNull
+        @Override
+        public CoroutineContext getContext() {
+          return EmptyCoroutineContext.INSTANCE;
+        }
+
+        @Override
+        public void resumeWith(@NonNull Object o) {
+          if (o instanceof ReadRecordsResponse) {
+            ReadRecordsResponse readResponse = (ReadRecordsResponse) o;
+            List<androidx.health.connect.client.records.Record> records = readResponse.getRecords();
+            JSONArray resultSet = new JSONArray();
+            for (androidx.health.connect.client.records.Record record : records) {
+              JSONObject data = HealthDataConvertor.parseRecordForType(record, datatype, filtered);
+              if (data != null) {
+                resultSet.put(data);
+              }
+            }
+            callbackContext.success(resultSet);
+          }
+        }});
+  }
+
+  void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
+                           final Set<DataOrigin> dataOrigins) {
+    final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
+    final Instant startInstant = Instant.ofEpochMilli(st);
+    final Instant endInstant = Instant.ofEpochMilli(et);
+
+    AggregateRequest aggregateRequest = new AggregateRequest(
+      metrics,
+      TimeRangeFilter.between(startInstant, endInstant),
+      dataOrigins
+    );
+
+
+    healthClient.aggregate(aggregateRequest,
+      new Continuation<Object>() {
+        @NonNull
+        @Override
+        public CoroutineContext getContext() {
+          return EmptyCoroutineContext.INSTANCE;
+        }
+
+        @Override
+        public void resumeWith(@NonNull Object o) {
+          if (o instanceof AggregationResult) {
+            AggregationResult result = (AggregationResult) o;
+            JSONArray resultSet = new JSONArray();
+            resultSet.put(HealthDataConvertor.parseAggregationResultForType(result, datatype, filtered));
+            callbackContext.success(resultSet);
+          }
+        }});
+
+  }
+
+  void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
+                           final Set<DataOrigin> dataOrigins, String bucketType) {
+    final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
+    final Instant startInstant = Instant.ofEpochMilli(st);
+    final Instant endInstant = Instant.ofEpochMilli(et);
+
+    if (bucketType.equalsIgnoreCase("minute") || bucketType.equalsIgnoreCase("hour")) {
+      Duration duration = Duration.ofHours(1);
+      if (bucketType.equalsIgnoreCase("minute")) {
+        duration = Duration.ofMinutes(1);
+      }
+
+      AggregateGroupByDurationRequest aggregateRequest = new AggregateGroupByDurationRequest(
+        (Set<? extends AggregateMetric<?>>) metrics,
+        TimeRangeFilter.between(startInstant, endInstant),
+        duration,
+        dataOrigins
+      );
+
+      healthClient.aggregateGroupByDuration(aggregateRequest,
+        new Continuation<Object>() {
+          @NonNull
+          @Override
+          public CoroutineContext getContext() {
+            return EmptyCoroutineContext.INSTANCE;
+          }
+
+          @Override
+          public void resumeWith(@NonNull Object o) {
+            if (o instanceof List) {
+              List<AggregationResultGroupedByDuration> results = (List<AggregationResultGroupedByDuration>) o;
+              JSONArray resultSet = new JSONArray();
+              for (AggregationResultGroupedByDuration aggregationResultGroupedByDuration : results) {
+                JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
+                try {
+                  obj.put("startDate", aggregationResultGroupedByDuration.getStartTime().toEpochMilli());
+                  obj.put("endDate", aggregationResultGroupedByDuration.getEndTime().toEpochMilli());
+                } catch (JSONException e) {
+                  e.printStackTrace();
+                }
+                resultSet.put(obj);
+              }
+
+              callbackContext.success(resultSet);
+            }
+          }});
+
+    } else if (bucketType.equalsIgnoreCase("day") || bucketType.equalsIgnoreCase("week") || bucketType.equalsIgnoreCase("month") || bucketType.equalsIgnoreCase("year")) {
+      Period period = Period.ofDays(1);
+      if (bucketType.equalsIgnoreCase("week")) {
+        period = Period.ofWeeks(1);
+      } else if (bucketType.equalsIgnoreCase("month")) {
+        period = Period.ofMonths(1);
+      } else if (bucketType.equalsIgnoreCase("year")) {
+        period = Period.ofYears(1);
+      }
+      LocalDateTime startLocalTime =
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(st), ZoneId.systemDefault());
+      LocalDateTime endLocalTime =
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(et), ZoneId.systemDefault());
+      AggregateGroupByPeriodRequest aggregateRequest = new AggregateGroupByPeriodRequest(
+        (Set<? extends AggregateMetric<?>>) metrics,
+        TimeRangeFilter.between(startLocalTime, endLocalTime),
+        period,
+        dataOrigins
+      );
+
+      healthClient.aggregateGroupByPeriod(aggregateRequest,
+        new Continuation<Object>() {
+          @NonNull
+          @Override
+          public CoroutineContext getContext() {
+            return EmptyCoroutineContext.INSTANCE;
+          }
+
+          @Override
+          public void resumeWith(@NonNull Object o) {
+            if (o instanceof List) {
+              List<AggregationResultGroupedByPeriod> results = (List<AggregationResultGroupedByPeriod>) o;
+              JSONArray resultSet = new JSONArray();
+              for (AggregationResultGroupedByPeriod aggregationResultGroupedByDuration : results) {
+                JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
+                try {
+                  obj.put("startDate", aggregationResultGroupedByDuration.getStartTime());
+                  obj.put("endDate", aggregationResultGroupedByDuration.getEndTime());
+                } catch (JSONException e) {
+                  e.printStackTrace();
+                }
+                resultSet.put(obj);
+              }
+
+              callbackContext.success(resultSet);
+            }
+          }});
+    }
+
+  }
+
+
 
   // queries for datapoints
   private void query(final JSONArray args, final CallbackContext callbackContext) throws Exception {
@@ -473,19 +576,12 @@ public class HealthPlugin extends CordovaPlugin {
       return;
     }
     String datatype = args.getJSONObject(0).getString("dataType");
-    final KClass dt = datatypes.get(datatype);
-
-    if (dt == null) {
-      callbackContext.error("Datatype " + datatype + " not supported");
-      return;
-    }
+    boolean filtered = args.getJSONObject(0).has("filtered") && args.getJSONObject(0).getBoolean("filtered");
 
     boolean includeCalsAndDist = false;
     if (args.getJSONObject(0).has("includeCalsAndDist")) {
       includeCalsAndDist = args.getJSONObject(0).getBoolean("includeCalsAndDist");
     }
-    Instant startInstant = new Instant(st, 0);
-    Instant endInstant = new Instant(et, 0);
 
     Integer limit = 1000;
     Set<DataOrigin> dataOrigins = new HashSet<>();
@@ -493,455 +589,17 @@ public class HealthPlugin extends CordovaPlugin {
       limit = args.getJSONObject(0).getInt("limit");
     }
 
-    ReadRecordsRequest readRecordsRequest = new ReadRecordsRequest(
-      dt,
-      TimeRangeFilter.between(startInstant, endInstant),
-      dataOrigins,
-      true,
-      limit,
-      null
-
-      );
-
-
-    Task<DataReadResponse> queryTask = null; //Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-      // .readData(readRequestBuilder.build());
-
-    DataReadResponse response = Tasks.await(queryTask);
-    if (!response.getStatus().isSuccess()) {
-      // abort
-      callbackContext.error(response.getStatus().getStatusMessage());
+    if (HealthDataConvertor.getDataType(datatype) != null) {
+      queryRawData(callbackContext, datatype, st, et, filtered, limit, dataOrigins);
       return;
     }
 
-    Log.d(TAG, "Data query successful");
-    JSONArray resultset = new JSONArray();
-    List<DataSet> datasets = response.getDataSets();
-
-    for (DataSet dataset : datasets) {
-      for (DataPoint datapoint : dataset.getDataPoints()) {
-        JSONObject obj = new JSONObject();
-        long datapointStartTime = datapoint.getStartTime(TimeUnit.MILLISECONDS);
-        long datapointEndTime = datapoint.getEndTime(TimeUnit.MILLISECONDS);
-        obj.put("startDate", datapointStartTime);
-        obj.put("endDate", datapointEndTime);
-        DataSource dataSource = datapoint.getOriginalDataSource();
-        if (dataSource != null) {
-          String sourceBundleId = dataSource.getAppPackageName();
-          if (sourceBundleId != null) {
-            obj.put("sourceBundleId", sourceBundleId);
-          } else {
-            sourceBundleId = dataSource.getStreamIdentifier();
-            if (sourceBundleId != null) obj.put("sourceBundleId", sourceBundleId);
-          }
-        }
-
-        //reference for fields: https://developers.google.com/android/reference/com/google/android/gms/fitness/data/Field.html
-        if (dt.equals(DataType.TYPE_STEP_COUNT_DELTA)) {
-          int steps = datapoint.getValue(Field.FIELD_STEPS).asInt();
-          obj.put("value", steps);
-          obj.put("unit", "count");
-        } else if (dt.equals(DataType.TYPE_DISTANCE_DELTA)) {
-          float distance = datapoint.getValue(Field.FIELD_DISTANCE).asFloat();
-          obj.put("value", distance);
-          obj.put("unit", "m");
-        } else if (dt.equals(DataType.TYPE_HYDRATION)) {
-          float distance = datapoint.getValue(Field.FIELD_VOLUME).asFloat();
-          obj.put("value", distance);
-          obj.put("unit", "ml");// documentation says it's litres, but from experiments I get ml
-        } else if (dt.equals(DataType.TYPE_NUTRITION)) {
-          if (datatype.equalsIgnoreCase("nutrition")) {
-            JSONObject dob = new JSONObject();
-            if (datapoint.getValue(Field.FIELD_FOOD_ITEM) != null) {
-              dob.put("item", datapoint.getValue(Field.FIELD_FOOD_ITEM).asString());
-            }
-            if (datapoint.getValue(Field.FIELD_MEAL_TYPE) != null) {
-              int mealt = datapoint.getValue(Field.FIELD_MEAL_TYPE).asInt();
-              if (mealt == Field.MEAL_TYPE_BREAKFAST)
-                dob.put("meal_type", "breakfast");
-              else if (mealt == Field.MEAL_TYPE_DINNER)
-                dob.put("meal_type", "dinner");
-              else if (mealt == Field.MEAL_TYPE_LUNCH)
-                dob.put("meal_type", "lunch");
-              else if (mealt == Field.MEAL_TYPE_SNACK)
-                dob.put("meal_type", "snack");
-              else dob.put("meal_type", "unknown");
-            }
-            if (datapoint.getValue(Field.FIELD_NUTRIENTS) != null) {
-              Value v = datapoint.getValue(Field.FIELD_NUTRIENTS);
-              dob.put("nutrients", getNutrients(v, null));
-            }
-            obj.put("value", dob);
-            obj.put("unit", "nutrition");
-          } else {
-            Value nutrients = datapoint.getValue(Field.FIELD_NUTRIENTS);
-//            NutrientFieldInfo fieldInfo = nutrientFields.get(datatype);
-//            if (fieldInfo != null) {
-//              if (nutrients.getKeyValue(fieldInfo.field) != null) {
-//                obj.put("value", (float) nutrients.getKeyValue(fieldInfo.field));
-//              } else {
-//                obj.put("value", 0f);
-//              }
-//              obj.put("unit", fieldInfo.unit);
-//            }
-          }
-        } else if (dt.equals(DataType.TYPE_CALORIES_EXPENDED)) {
-          float calories = datapoint.getValue(Field.FIELD_CALORIES).asFloat();
-          obj.put("value", calories);
-          obj.put("unit", "kcal");
-        } else if (dt.equals(DataType.TYPE_BASAL_METABOLIC_RATE)) {
-          float calories = datapoint.getValue(Field.FIELD_CALORIES).asFloat();
-          obj.put("value", calories);
-          obj.put("unit", "kcal");
-        } else if (dt.equals(DataType.TYPE_HEIGHT)) {
-          float height = datapoint.getValue(Field.FIELD_HEIGHT).asFloat();
-          obj.put("value", height);
-          obj.put("unit", "m");
-        } else if (dt.equals(DataType.TYPE_WEIGHT)) {
-          float weight = datapoint.getValue(Field.FIELD_WEIGHT).asFloat();
-          obj.put("value", weight);
-          obj.put("unit", "kg");
-        } else if (dt.equals(DataType.TYPE_HEART_RATE_BPM)) {
-          float weight = datapoint.getValue(Field.FIELD_BPM).asFloat();
-          obj.put("value", weight);
-          obj.put("unit", "bpm");
-        } else if (dt.equals(DataType.TYPE_BODY_FAT_PERCENTAGE)) {
-          float weight = datapoint.getValue(Field.FIELD_PERCENTAGE).asFloat();
-          obj.put("value", weight);
-          obj.put("unit", "percent");
-        } else if (dt.equals(DataType.TYPE_ACTIVITY_SEGMENT)) {
-          String activity = datapoint.getValue(Field.FIELD_ACTIVITY).asActivity();
-          obj.put("value", activity);
-          obj.put("unit", "activityType");
-
-
-          // remove user input entries if the flag "filterOutUserInput" is true
-          if (args.getJSONObject(0).has("filterOutUserInput") && args.getJSONObject(0).getBoolean("filterOutUserInput")) {
-              if (dataSource.getStreamIdentifier().contains("user_input")) {
-                  continue;
-              }
-          }
-
-          if (includeCalsAndDist) {
-            // extra queries to get calorie and distance records related to the activity times
-            DataReadRequest.Builder readActivityRequestBuilder = new DataReadRequest.Builder();
-            readActivityRequestBuilder.setTimeRange(datapoint.getStartTime(TimeUnit.MILLISECONDS), datapoint.getEndTime(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
-                    .read(DataType.TYPE_DISTANCE_DELTA)
-                    .read(DataType.TYPE_CALORIES_EXPENDED);
-
-            Task<DataReadResponse> activityTask = null; // Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-                    // .readData(readActivityRequestBuilder.build());
-            // Active wait. This is not very efficient, but otherwise the code would become hard to structure
-            DataReadResponse dataReadActivityResult = Tasks.await(activityTask);
-
-            if (!dataReadActivityResult.getStatus().isSuccess()) {
-              // abort
-              callbackContext.error(dataReadActivityResult.getStatus().getStatusMessage());
-              return;
-            }
-
-            float totaldistance = 0;
-            float totalcalories = 0;
-
-            List<DataSet> dataActivitySets = dataReadActivityResult.getDataSets();
-            for (DataSet dataActivitySet : dataActivitySets) {
-              for (DataPoint dataActivityPoint : dataActivitySet.getDataPoints()) {
-                if (dataActivitySet.getDataType().equals(DataType.TYPE_DISTANCE_DELTA)) {
-                  float distance = dataActivityPoint.getValue(Field.FIELD_DISTANCE).asFloat();
-                  totaldistance += distance;
-                } else {
-                  float calories = dataActivityPoint.getValue(Field.FIELD_CALORIES).asFloat();
-                  totalcalories += calories;
-                }
-              }
-            }
-            obj.put("distance", totaldistance);
-            obj.put("calories", totalcalories);
-          }
-          obj.put("duration", (datapointEndTime - datapointStartTime) / 1000);
-        } else if (dt.equals(HealthDataTypes.TYPE_OXYGEN_SATURATION)) {
-          float oxysat = -1;
-          if (datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION) != null)
-            oxysat = datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION).asFloat();
-          obj.put("value", oxysat);
-          obj.put("unit", "%");
-
-          if (datapoint.getValue(HealthFields.FIELD_SUPPLEMENTAL_OXYGEN_FLOW_RATE) != null || datapoint.getValue(HealthFields.FIELD_OXYGEN_THERAPY_ADMINISTRATION_MODE) != null) {
-            JSONObject supoxy = new JSONObject();
-            if (datapoint.getValue(HealthFields.FIELD_SUPPLEMENTAL_OXYGEN_FLOW_RATE) != null) {
-              float flowrate = datapoint.getValue(HealthFields.FIELD_SUPPLEMENTAL_OXYGEN_FLOW_RATE).asFloat();
-              if (flowrate >= 0) {
-                supoxy.put("flow_rate", flowrate);
-              }
-            }
-            if (datapoint.getValue(HealthFields.FIELD_OXYGEN_THERAPY_ADMINISTRATION_MODE) != null) {
-              int adminmode =  datapoint.getValue(HealthFields.FIELD_OXYGEN_THERAPY_ADMINISTRATION_MODE).asInt();
-              if (adminmode == 1) {
-                supoxy.put("administrationMode", "nasal canula");
-              }
-            }
-            obj.put("supplemental_oxygen", supoxy);
-          }
-          if (datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION_SYSTEM) != null) {
-            int system = datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION_SYSTEM).asInt();
-            if (system == 1) {
-              obj.put("saturationSystem", "peripheral capillaries");
-            }
-          }
-          if (datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION_MEASUREMENT_METHOD) != null) {
-            int method = datapoint.getValue(HealthFields.FIELD_OXYGEN_SATURATION_MEASUREMENT_METHOD).asInt();
-            if (method == 1) {
-              obj.put("method", "pulse oximetry");
-            }
-          }
-        } else if (dt.equals(HealthDataTypes.TYPE_BLOOD_GLUCOSE)) {
-          JSONObject glucob = new JSONObject();
-          float glucose = datapoint.getValue(HealthFields.FIELD_BLOOD_GLUCOSE_LEVEL).asFloat();
-          glucob.put("glucose", glucose);
-          if (datapoint.getValue(HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL).isSet() &&
-            datapoint.getValue(Field.FIELD_MEAL_TYPE).isSet()) {
-            int temp_to_meal = datapoint.getValue(HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL).asInt();
-            String meal = "";
-            if (temp_to_meal == HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_AFTER_MEAL) {
-              meal = "after_";
-            } else if (temp_to_meal == HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_BEFORE_MEAL) {
-              meal = "before_";
-            } else if (temp_to_meal == HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_FASTING) {
-              meal = "fasting";
-            } else if (temp_to_meal == HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_GENERAL) {
-              meal = "";
-            }
-            if (temp_to_meal != HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_FASTING) {
-              switch (datapoint.getValue(Field.FIELD_MEAL_TYPE).asInt()) {
-                case Field.MEAL_TYPE_BREAKFAST:
-                  meal += "breakfast";
-                  break;
-                case Field.MEAL_TYPE_DINNER:
-                  meal += "dinner";
-                  break;
-                case Field.MEAL_TYPE_LUNCH:
-                  meal += "lunch";
-                  break;
-                case Field.MEAL_TYPE_SNACK:
-                  meal += "snack";
-                  break;
-                default:
-                  meal = "unknown";
-              }
-            }
-            glucob.put("meal", meal);
-          }
-          if (datapoint.getValue(HealthFields.FIELD_TEMPORAL_RELATION_TO_SLEEP).isSet()) {
-            String sleep = "";
-            switch (datapoint.getValue(HealthFields.FIELD_TEMPORAL_RELATION_TO_SLEEP).asInt()) {
-              case HealthFields.TEMPORAL_RELATION_TO_SLEEP_BEFORE_SLEEP:
-                sleep = "before_sleep";
-                break;
-              case HealthFields.TEMPORAL_RELATION_TO_SLEEP_DURING_SLEEP:
-                sleep = "during_sleep";
-                break;
-              case HealthFields.TEMPORAL_RELATION_TO_SLEEP_FULLY_AWAKE:
-                sleep = "fully_awake";
-                break;
-              case HealthFields.TEMPORAL_RELATION_TO_SLEEP_ON_WAKING:
-                sleep = "on_waking";
-                break;
-            }
-            glucob.put("sleep", sleep);
-          }
-          if (datapoint.getValue(HealthFields.FIELD_BLOOD_GLUCOSE_SPECIMEN_SOURCE).isSet()) {
-            String source = "";
-            switch (datapoint.getValue(HealthFields.FIELD_BLOOD_GLUCOSE_SPECIMEN_SOURCE).asInt()) {
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_CAPILLARY_BLOOD:
-                source = "capillary_blood";
-                break;
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_INTERSTITIAL_FLUID:
-                source = "interstitial_fluid";
-                break;
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_PLASMA:
-                source = "plasma";
-                break;
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_SERUM:
-                source = "serum";
-                break;
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_TEARS:
-                source = "tears";
-                break;
-              case HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_WHOLE_BLOOD:
-                source = "whole_blood";
-                break;
-            }
-            glucob.put("source", source);
-          }
-          obj.put("value", glucob);
-          obj.put("unit", "mmol/L");
-        } else if (dt.equals(HealthDataTypes.TYPE_BLOOD_PRESSURE)) {
-          JSONObject bpobj = new JSONObject();
-          if (datapoint.getValue(HealthFields.FIELD_BLOOD_PRESSURE_SYSTOLIC).isSet()) {
-            float systolic = datapoint.getValue(HealthFields.FIELD_BLOOD_PRESSURE_SYSTOLIC).asFloat();
-            bpobj.put("systolic", systolic);
-          }
-          if (datapoint.getValue(HealthFields.FIELD_BLOOD_PRESSURE_DIASTOLIC).isSet()) {
-            float diastolic = datapoint.getValue(HealthFields.FIELD_BLOOD_PRESSURE_DIASTOLIC).asFloat();
-            bpobj.put("diastolic", diastolic);
-          }
-          obj.put("value", bpobj);
-          obj.put("unit", "mmHg");
-        }  else if (dt.equals(DataType.TYPE_SLEEP_SEGMENT)) {
-          String sleepSegmentType = "sleep";
-          switch (datapoint.getValue(Field.FIELD_SLEEP_SEGMENT_TYPE).asInt()) {
-            case SleepStages.AWAKE:
-              sleepSegmentType = "sleep.awake";
-              break;
-            case SleepStages.SLEEP:
-              sleepSegmentType = "sleep";
-              break;
-            case SleepStages.OUT_OF_BED:
-              sleepSegmentType = "sleep.outOfBed";
-              break;
-            case SleepStages.SLEEP_LIGHT:
-              sleepSegmentType = "sleep.light";
-              break;
-            case SleepStages.SLEEP_DEEP:
-              sleepSegmentType = "sleep.deep";
-              break;
-            case SleepStages.SLEEP_REM:
-              sleepSegmentType = "sleep.rem";
-              break;
-          }
-          obj.put("value", sleepSegmentType);
-          obj.put("unit", "sleepType");
-        }
-        resultset.put(obj);
-      }
+    if (HealthDataConvertor.getAggregateMetricsForDataType(datatype) != null ) {
+      queryAggregatedData(callbackContext, datatype, st, et, filtered, dataOrigins);
+      return;
     }
 
-    // add sleep sessions
-    // (for some reason, they may not be included as data points)
-    if (dt.equals(DataType.TYPE_SLEEP_SEGMENT)){
-      SessionReadRequest.Builder sleepSessionsBuilder = new SessionReadRequest.Builder()
-              .readSessionsFromAllApps()
-              // By default, only activity sessions are included, so it is necessary to explicitly
-              // request sleep sessions. This will cause activity sessions to be *excluded*.
-              .includeSleepSessions()
-              // Sleep segment data is required for details of the fine-granularity sleep, if it is present.
-              .read(DataType.TYPE_SLEEP_SEGMENT)
-              .setTimeInterval(st, et, TimeUnit.MILLISECONDS);
-
-      Task<SessionReadResponse> sleepQueryTask = null; // Fitness.getSessionsClient(this.cordova.getContext(), this.account)
-              // .readSession(sleepSessionsBuilder.build());
-
-      SessionReadResponse sleepSessionsResponse = Tasks.await(sleepQueryTask);
-      if (!sleepSessionsResponse.getStatus().isSuccess()) {
-        // abort
-        callbackContext.error(sleepSessionsResponse.getStatus().getStatusMessage());
-        return;
-      }
-      List<Session> sessions = sleepSessionsResponse.getSessions();
-      for (Session session : sessions) {
-        JSONObject obj = new JSONObject();
-        String sourceBundleId = session.getAppPackageName();
-        long sessionStart = session.getStartTime(TimeUnit.MILLISECONDS);
-        long sessionEnd = session.getEndTime(TimeUnit.MILLISECONDS);
-        // If the sleep session has finer granularity sub-components, extract them:
-        boolean hasSubSessions = false;
-        List<DataSet> sleepDatasets = sleepSessionsResponse.getDataSet(session);
-        for (DataSet sleepDataSet : sleepDatasets) {
-          for (DataPoint point : sleepDataSet.getDataPoints()) {
-            hasSubSessions = true;
-            int sleepType = point.getValue(Field.FIELD_SLEEP_SEGMENT_TYPE).asInt();
-            long segmentStart = point.getStartTime(TimeUnit.MILLISECONDS);
-            long segmentEnd = point.getEndTime(TimeUnit.MILLISECONDS);
-            obj.put("startDate", segmentStart);
-            obj.put("endDate",segmentEnd);
-            if (sourceBundleId != null) {
-              obj.put("sourceBundleId", sourceBundleId);
-            }
-            obj.put("unit", "sleepType");
-            if (sleepType == SleepStages.AWAKE) {
-              obj.put("value", "sleep.awake");
-            } else if (sleepType == SleepStages.SLEEP) {
-              obj.put("value", "sleep");
-            } else if (sleepType == SleepStages.OUT_OF_BED) {
-              obj.put("value", "sleep.outOfBed");
-            } else if (sleepType == SleepStages.SLEEP_DEEP) {
-              obj.put("value", "sleep.deep");
-            } else if (sleepType == SleepStages.SLEEP_LIGHT) {
-              obj.put("value", "sleep.light");
-            } else if (sleepType == SleepStages.SLEEP_REM) {
-              obj.put("value", "sleep.rem");
-            } else {
-              // a generic sleep
-              obj.put("value", "sleep");
-            }
-          }
-        }
-        if (!hasSubSessions) {
-          obj.put("startDate", sessionStart);
-          obj.put("endDate",sessionEnd);
-          // if no specific type of sleep is specified, just use the generic "sleep"
-          obj.put("unit", "sleepType");
-          obj.put("value", "sleep");
-          if (sourceBundleId != null) {
-            obj.put("sourceBundleId", sourceBundleId);
-          }
-          resultset.put(obj);
-        }
-      }
-    }
-
-
-    callbackContext.success(resultset);
-  }
-
-  // utility function, gets nutrients from a Value and merges the value inside a json object
-  private JSONObject getNutrients(Value nutrientsMap, JSONObject mergewith) throws JSONException {
-    JSONObject nutrients;
-    if (mergewith != null) {
-      nutrients = mergewith;
-    } else {
-      nutrients = new JSONObject();
-    }
-    mergeNutrient(Field.NUTRIENT_CALORIES, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_TOTAL_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_SATURATED_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_UNSATURATED_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_POLYUNSATURATED_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_MONOUNSATURATED_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_TRANS_FAT, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_CHOLESTEROL, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_SODIUM, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_POTASSIUM, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_TOTAL_CARBS, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_DIETARY_FIBER, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_SUGAR, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_PROTEIN, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_VITAMIN_A, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_VITAMIN_C, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_CALCIUM, nutrientsMap, nutrients);
-    mergeNutrient(Field.NUTRIENT_IRON, nutrientsMap, nutrients);
-
-    return nutrients;
-  }
-
-  // utility function, merges a nutrient in an json object
-  private void mergeNutrient(String f, Value nutrientsMap, JSONObject nutrients) throws JSONException {
-    if (nutrientsMap.getKeyValue(f) != null) {
-      String n = null;
-//      for (String name : nutrientFields.keySet()) {
-//        if (nutrientFields.get(name).field.equalsIgnoreCase(f)) {
-//          n = name;
-//          break;
-//        }
-//      }
-      if (n != null) {
-        float val = nutrientsMap.getKeyValue(f);
-        if (nutrients.has(n)) {
-          val += nutrients.getDouble(n);
-        }
-        nutrients.put(n, val);
-      }
-    }
+    callbackContext.error("Datatype " + datatype + " not supported");
   }
 
   // queries and aggregates data
@@ -970,438 +628,15 @@ public class HealthPlugin extends CordovaPlugin {
     boolean hasbucket = args.getJSONObject(0).has("bucket");
     boolean customBucket = false;
     String bucketType = "";
+
     if (hasbucket) {
       bucketType = args.getJSONObject(0).getString("bucket");
-      if (!bucketType.equalsIgnoreCase("minute") && !bucketType.equalsIgnoreCase("hour") && !bucketType.equalsIgnoreCase("day")) {
-        customBucket = true;
-        if (!bucketType.equalsIgnoreCase("week") && !bucketType.equalsIgnoreCase("month") && !bucketType.equalsIgnoreCase("year")) {
-          // error
-          callbackContext.error("Bucket type " + bucketType + " not recognised");
-          return;
-        }
-      }
-      // Google fit bucketing is different and start and end must be quantised
-      Calendar c = Calendar.getInstance();
-
-      c.setTimeInMillis(st);
-      c.clear(Calendar.SECOND);
-      c.clear(Calendar.MILLISECOND);
-      c.clear(Calendar.MINUTE);
-      if (!bucketType.equalsIgnoreCase("minute")) {
-        c.set(Calendar.HOUR_OF_DAY, 0);
-        if (!bucketType.equalsIgnoreCase("hour")) {
-          c.set(Calendar.HOUR_OF_DAY, 0);
-          if (bucketType.equalsIgnoreCase("week")) {
-            c.set(Calendar.DAY_OF_WEEK, c.getFirstDayOfWeek());
-          } else if (bucketType.equalsIgnoreCase("month")) {
-            c.set(Calendar.DAY_OF_MONTH, 1);
-          } else if (bucketType.equalsIgnoreCase("year")) {
-            c.set(Calendar.DAY_OF_YEAR, 1);
-          }
-        }
-      }
-      st = c.getTimeInMillis();
-
-      c.setTimeInMillis(et);
-      c.clear(Calendar.SECOND);
-      c.clear(Calendar.MILLISECOND);
-      c.clear(Calendar.MINUTE);
-      if (bucketType.equalsIgnoreCase("minute")) {
-        c.add(Calendar.HOUR_OF_DAY, 1);
-      } else {
-        if (bucketType.equalsIgnoreCase("hour")) {
-          c.add(Calendar.HOUR_OF_DAY, 1);
-        } else {
-          c.set(Calendar.HOUR_OF_DAY, 0);
-          if (bucketType.equalsIgnoreCase("day")) {
-            c.add(Calendar.DAY_OF_YEAR, 1);
-          } else if (bucketType.equalsIgnoreCase("week")) {
-            c.add(Calendar.DAY_OF_YEAR, 7);
-          } else if (bucketType.equalsIgnoreCase("month")) {
-            c.add(Calendar.MONTH, 1);
-          } else if (bucketType.equalsIgnoreCase("year")) {
-            c.add(Calendar.YEAR, 1);
-          }
-        }
-      }
-      et = c.getTimeInMillis();
-    }
-
-    // basal metabolic rate is treated in a different way
-    // we need to query per day and not all days may have a sample
-    // so we query over a week then we take the average
-    float basalAVG = 0;
-    if (datatype.equalsIgnoreCase("calories.basal")) {
-      try {
-        basalAVG = getBasalAVG(_et);
-      } catch (Exception ex) {
-        callbackContext.error(ex.getMessage());
-        return;
-      }
-    }
-
-    DataReadRequest.Builder builder = new DataReadRequest.Builder();
-    builder.setTimeRange(st, et, TimeUnit.MILLISECONDS);
-
-    if (datatype.equalsIgnoreCase("steps")) {
-      if (args.getJSONObject(0).has("filtered") && args.getJSONObject(0).getBoolean("filtered")) {
-        // exceptional case for filtered steps
-        DataSource filteredStepsSource = new DataSource.Builder()
-          .setDataType(DataType.TYPE_STEP_COUNT_DELTA)
-          .setType(DataSource.TYPE_DERIVED)
-          .setStreamName("estimated_steps")
-          .setAppPackageName("com.google.android.gms")
-          .build();
-        builder.aggregate(filteredStepsSource, DataType.AGGREGATE_STEP_COUNT_DELTA);
-      } else {
-        builder.aggregate(DataType.TYPE_STEP_COUNT_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA);
-      }
-    } else if (datatype.equalsIgnoreCase("distance")) {
-      builder.aggregate(DataType.TYPE_DISTANCE_DELTA);
-    } else if (datatype.equalsIgnoreCase("calories")) {
-      builder.aggregate(DataType.TYPE_CALORIES_EXPENDED);
-    } else if (datatype.equalsIgnoreCase("calories.basal")) {
-      builder.aggregate(DataType.TYPE_BASAL_METABOLIC_RATE);
-    } else if (datatype.equalsIgnoreCase("activity")) {
-      builder.aggregate(DataType.TYPE_ACTIVITY_SEGMENT);
-    } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-      builder.aggregate(DataType.TYPE_HYDRATION);
-    } else if (datatype.startsWith("nutrition")) {
-      builder.aggregate(DataType.TYPE_NUTRITION);
+      queryAggregatedData(callbackContext, datatype, st, et, false, new HashSet<DataOrigin>(), bucketType);
     } else {
-      callbackContext.error("Datatype " + datatype + " not supported");
-      return;
-    }
-
-    if (hasbucket) {
-      if (bucketType.equalsIgnoreCase("minute")) {
-        builder.bucketByTime(1, TimeUnit.MINUTES);
-      } else if (bucketType.equalsIgnoreCase("hour")) {
-        builder.bucketByTime(1, TimeUnit.HOURS);
-      } else if (bucketType.equalsIgnoreCase("day")) {
-        builder.bucketByTime(1, TimeUnit.DAYS);
-      } else {
-        // use days, then will need to aggregate manually
-        builder.bucketByTime(1, TimeUnit.DAYS);
-      }
-    } else {
-      if (datatype.equalsIgnoreCase("activity")) {
-        builder.bucketByActivityType(1, TimeUnit.MILLISECONDS);
-      } else {
-        long allms = et - st;
-        if (allms <= Integer.MAX_VALUE) {
-          builder.bucketByTime((int) allms, TimeUnit.MILLISECONDS);
-        } else {
-          builder.bucketByTime((int) (allms / 1000), TimeUnit.SECONDS);
-        }
-      }
-    }
-
-    DataReadRequest readRequest = builder.build();
-    Task<DataReadResponse> task = null; //Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-      //.readData(readRequest);
-
-    try {
-      DataReadResponse dataReadResult = Tasks.await(task);
-      if (!dataReadResult.getStatus().isSuccess()) {
-        callbackContext.error(dataReadResult.getStatus().getStatusMessage());
-        return;
-      }
-      Log.d(TAG, "Got data from query aggregated");
-      JSONObject retBucket = null;
-      JSONArray retBucketsArr = new JSONArray();
-      if (hasbucket) {
-        if (customBucket) {
-          // create custom buckets, as these are not supported by Google Fit
-          Calendar cal = Calendar.getInstance();
-          cal.setTimeInMillis(st);
-          while (cal.getTimeInMillis() < et) {
-            JSONObject customBuck = new JSONObject();
-            customBuck.put("startDate", cal.getTimeInMillis());
-            if (bucketType.equalsIgnoreCase("week")) {
-              cal.add(Calendar.DAY_OF_YEAR, 7);
-            } else if (bucketType.equalsIgnoreCase("month")) {
-              cal.add(Calendar.MONTH, 1);
-            } else {
-              cal.add(Calendar.YEAR, 1);
-            }
-            customBuck.put("endDate", cal.getTimeInMillis());
-            retBucketsArr.put(customBuck);
-          }
-        }
-      } else {
-        //there will be only one bucket spanning all the period
-        retBucket = new JSONObject();
-        retBucket.put("startDate", st);
-        retBucket.put("endDate", et);
-        retBucket.put("value", 0);
-        if (datatype.equalsIgnoreCase("steps")) {
-          retBucket.put("unit", "count");
-        } else if (datatype.equalsIgnoreCase("distance")) {
-          retBucket.put("unit", "m");
-        } else if (datatype.equalsIgnoreCase("calories")) {
-          retBucket.put("unit", "kcal");
-        } else if (datatype.equalsIgnoreCase("activity")) {
-          retBucket.put("unit", "activitySummary");
-          if (includeCalsAndDist) {
-            // query per bucket time to get distance and calories per activity
-            // this will return the value already
-            JSONObject actobj = getAggregatedActivityDistanceCalories(st, et);
-            retBucket.put("value", actobj);
-          } else {
-            // initialise an empty object (will be filled in later)
-            retBucket.put("value", new JSONObject());
-          }
-          retBucket.put("duration", (et-st) / 1000);
-        } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-          retBucket.put("unit", "ml");
-        } else if (datatype.equalsIgnoreCase("nutrition")) {
-          retBucket.put("value", new JSONObject());
-          retBucket.put("unit", "nutrition");
-        } else if (datatype.startsWith("nutrition.")) {
-//          retBucket.put("unit", nutrientFields.get(datatype).unit);
-        }
-      }
-
-      for (Bucket bucket : dataReadResult.getBuckets()) {
-
-        if (hasbucket) {
-          if (customBucket) {
-            //find the bucket among customs
-            for (int i = 0; i < retBucketsArr.length(); i++) {
-              retBucket = retBucketsArr.getJSONObject(i);
-              long bst = retBucket.getLong("startDate");
-              long bet = retBucket.getLong("endDate");
-              if (bucket.getStartTime(TimeUnit.MILLISECONDS) >= bst
-                && bucket.getEndTime(TimeUnit.MILLISECONDS) <= bet) {
-                break;
-              }
-            }
-          } else {
-            //pick the current
-            retBucket = new JSONObject();
-            retBucket.put("startDate", bucket.getStartTime(TimeUnit.MILLISECONDS));
-            retBucket.put("endDate", bucket.getEndTime(TimeUnit.MILLISECONDS));
-            retBucketsArr.put(retBucket);
-          }
-          if (!retBucket.has("value")) {
-            retBucket.put("value", 0);
-            if (datatype.equalsIgnoreCase("steps")) {
-              retBucket.put("unit", "count");
-            } else if (datatype.equalsIgnoreCase("distance")) {
-              retBucket.put("unit", "m");
-            } else if (datatype.equalsIgnoreCase("calories")) {
-              retBucket.put("unit", "kcal");
-            } else if (datatype.equalsIgnoreCase("activity")) {
-              retBucket.put("unit", "activitySummary");
-              if (includeCalsAndDist) {
-                // query per bucket time to get distance and calories per activity
-                JSONObject actobj = getAggregatedActivityDistanceCalories(bucket.getStartTime(TimeUnit.MILLISECONDS), bucket.getEndTime(TimeUnit.MILLISECONDS));
-                retBucket.put("value", actobj);
-              } else {
-                // initialise an empty object (will be filled in later)
-                retBucket.put("value", new JSONObject());
-              }
-              long bucketStartTime = bucket.getStartTime(TimeUnit.MILLISECONDS);
-              long bucketEndTime = bucket.getEndTime(TimeUnit.MILLISECONDS);
-              retBucket.put("duration", (bucketEndTime - bucketStartTime) / 1000);
-            } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-              retBucket.put("unit", "ml");
-            } else if (datatype.equalsIgnoreCase("nutrition")) {
-              retBucket.put("value", new JSONObject());
-              retBucket.put("unit", "nutrition");
-            } else if (datatype.startsWith("nutrition.")) {
-//              NutrientFieldInfo fieldInfo = nutrientFields.get(datatype);
-//              if (fieldInfo != null) {
-//                retBucket.put("unit", fieldInfo.unit);
-//              }
-            }
-          }
-        }
-
-        // aggregate data points over the bucket
-        boolean atleastone = false;
-        boolean filtered = args.getJSONObject(0).has("filtered") && args.getJSONObject(0).getBoolean("filtered");
-        for (DataSet dataset : bucket.getDataSets()) {
-          for (DataPoint datapoint : dataset.getDataPoints()) {
-            atleastone = true;
-            if (datatype.equalsIgnoreCase("steps")) {
-              DataSource origDataSource = datapoint.getOriginalDataSource();
-              String origIdentifier = origDataSource.getStreamIdentifier();
-              if (filtered) {
-                if (origIdentifier.contains("user_input")) {
-                  continue;
-                }
-              }
-              int nsteps = datapoint.getValue(Field.FIELD_STEPS).asInt();
-              int osteps = retBucket.getInt("value");
-              retBucket.put("sourceName", origDataSource.getStreamName() + "_" + origDataSource.getStreamIdentifier() );
-              retBucket.put("value", osteps + nsteps);
-            } else if (datatype.equalsIgnoreCase("distance")) {
-              float ndist = datapoint.getValue(Field.FIELD_DISTANCE).asFloat();
-              double odist = retBucket.getDouble("value");
-              retBucket.put("value", odist + ndist);
-            } else if (datatype.equalsIgnoreCase("calories")) {
-              float ncal = datapoint.getValue(Field.FIELD_CALORIES).asFloat();
-              double ocal = retBucket.getDouble("value");
-              retBucket.put("value", ocal + ncal);
-            } else if (datatype.equalsIgnoreCase("calories.basal")) {
-              float ncal = datapoint.getValue(Field.FIELD_AVERAGE).asFloat();
-              double ocal = retBucket.getDouble("value");
-              retBucket.put("value", ocal + ncal);
-            } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-              float nwat = datapoint.getValue(Field.FIELD_VOLUME).asFloat();
-              double owat = retBucket.getDouble("value");
-              retBucket.put("value", owat + nwat);
-            } else if (datatype.equalsIgnoreCase("nutrition")) {
-              JSONObject nutrsob = retBucket.getJSONObject("value");
-              if (datapoint.getValue(Field.FIELD_NUTRIENTS) != null) {
-                nutrsob = getNutrients(datapoint.getValue(Field.FIELD_NUTRIENTS), nutrsob);
-              }
-              retBucket.put("value", nutrsob);
-            } else if (datatype.startsWith("nutrition.")) {
-              Value nutrients = datapoint.getValue(Field.FIELD_NUTRIENTS);
-//              NutrientFieldInfo fieldInfo = nutrientFields.get(datatype);
-//              if (fieldInfo != null) {
-//                float value = nutrients.getKeyValue(fieldInfo.field);
-//                double total = retBucket.getDouble("value");
-//                retBucket.put("value", total + value);
-//              }
-            } else if (datatype.equalsIgnoreCase("activity")) {
-              String activity = datapoint.getValue(Field.FIELD_ACTIVITY).asActivity();
-              int ndur = datapoint.getValue(Field.FIELD_DURATION).asInt();
-              JSONObject actobj = retBucket.getJSONObject("value");
-              JSONObject summary;
-              if (actobj.has(activity)) {
-                summary = actobj.getJSONObject(activity);
-                int odur = summary.getInt("duration");
-                summary.put("duration", odur + ndur);
-              } else {
-                summary = new JSONObject();
-                summary.put("duration", ndur);
-              }
-              actobj.put(activity, summary);
-              retBucket.put("value", actobj);
-            }
-          }
-        } //end of data set loop
-        if (datatype.equalsIgnoreCase("calories.basal")) {
-          double basals = retBucket.getDouble("value");
-          if (!atleastone) {
-            //when no basal is available, use the daily average
-            basals += basalAVG;
-            retBucket.put("value", basals);
-          }
-          // if the bucket is not daily, it needs to be normalised
-          if (!hasbucket || bucketType.equalsIgnoreCase("minute") || bucketType.equalsIgnoreCase("hour")) {
-            long sst = retBucket.getLong("startDate");
-            long eet = retBucket.getLong("endDate");
-            basals = (basals / (24 * 60 * 60 * 1000)) * (eet - sst);
-            retBucket.put("value", basals);
-          }
-        }
-      } // end of buckets loop
-      if (hasbucket) callbackContext.success(retBucketsArr);
-      else callbackContext.success(retBucket);
-    } catch (Exception e) {
-      callbackContext.error(e.getMessage());
+      queryAggregatedData(callbackContext, datatype, st, et, false, new HashSet<DataOrigin>());
     }
   }
 
-  private JSONObject getAggregatedActivityDistanceCalories(long st, long et) throws Exception {
-    JSONObject actobj = new JSONObject();
-
-    DataReadRequest readActivityDistCalRequest = new DataReadRequest.Builder()
-      .aggregate(DataType.TYPE_DISTANCE_DELTA)
-      .aggregate(DataType.TYPE_CALORIES_EXPENDED)
-      .bucketByActivityType(1, TimeUnit.SECONDS)
-      .setTimeRange(st, et, TimeUnit.MILLISECONDS)
-      .build();
-
-    Task<DataReadResponse> task = null; //Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-      // .readData(readActivityDistCalRequest);
-
-    DataReadResponse dataActivityDistCalReadResult = Tasks.await(task);
-    if (!dataActivityDistCalReadResult.getStatus().isSuccess()) {
-      throw new Exception(dataActivityDistCalReadResult.getStatus().getStatusMessage());
-    }
-
-    for (Bucket activityBucket : dataActivityDistCalReadResult.getBuckets()) {
-      //each bucket is an activity
-      float distance = 0;
-      float calories = 0;
-      String activity = activityBucket.getActivity();
-
-      DataSet distanceDataSet = activityBucket.getDataSet(DataType.AGGREGATE_DISTANCE_DELTA);
-      for (DataPoint datapoint : distanceDataSet.getDataPoints()) {
-        distance += datapoint.getValue(Field.FIELD_DISTANCE).asFloat();
-      }
-
-      DataSet caloriesDataSet = activityBucket.getDataSet(DataType.AGGREGATE_CALORIES_EXPENDED);
-      for (DataPoint datapoint : caloriesDataSet.getDataPoints()) {
-        calories += datapoint.getValue(Field.FIELD_CALORIES).asFloat();
-      }
-
-      JSONObject summary;
-      if (actobj.has(activity)) {
-        summary = actobj.getJSONObject(activity);
-        double existingdistance = summary.getDouble("distance");
-        summary.put("distance", distance + existingdistance);
-        double existingcalories = summary.getDouble("calories");
-        summary.put("calories", calories + existingcalories);
-      } else {
-        summary = new JSONObject();
-        summary.put("duration", 0); // sum onto this whilst aggregating over buckets.
-        summary.put("distance", distance);
-        summary.put("calories", calories);
-      }
-
-      actobj.put(activity, summary);
-    }
-    return actobj;
-  }
-
-
-  // utility function that gets the basal metabolic rate averaged over a week
-  private float getBasalAVG(long _et) throws Exception {
-    float basalAVG = 0;
-    Calendar cal = java.util.Calendar.getInstance();
-    cal.setTime(new Date(_et));
-    //set start time to a week before end time
-    cal.add(Calendar.WEEK_OF_YEAR, -1);
-    long nst = cal.getTimeInMillis();
-
-    DataReadRequest.Builder builder = new DataReadRequest.Builder();
-    builder.aggregate(DataType.TYPE_BASAL_METABOLIC_RATE);
-    builder.bucketByTime(1, TimeUnit.DAYS);
-    builder.setTimeRange(nst, _et, TimeUnit.MILLISECONDS);
-    DataReadRequest readRequest = builder.build();
-
-    Task<DataReadResponse> task = null; // Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-      // .readData(readRequest);
-
-    DataReadResponse dataReadResult = Tasks.await(task);
-
-    if (!dataReadResult.getStatus().isSuccess()) {
-      throw new Exception(dataReadResult.getStatus().getStatusMessage());
-    }
-
-    JSONObject obj = new JSONObject();
-    int avgsN = 0;
-    for (Bucket bucket : dataReadResult.getBuckets()) {
-      // in the com.google.bmr.summary data type, each data point represents
-      // the average, maximum and minimum basal metabolic rate, in kcal per day, over the time interval of the data point.
-      DataSet ds = bucket.getDataSet(DataType.AGGREGATE_BASAL_METABOLIC_RATE_SUMMARY);
-      for (DataPoint dp : ds.getDataPoints()) {
-        float avg = dp.getValue(Field.FIELD_AVERAGE).asFloat();
-        basalAVG += avg;
-        avgsN++;
-      }
-    }
-    // do the average of the averages
-    if (avgsN != 0) basalAVG /= avgsN; // this a daily average
-    return basalAVG;
-  }
 
   // stores a data point
   private void store(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
@@ -1430,204 +665,12 @@ public class HealthPlugin extends CordovaPlugin {
       sourceBundleId = args.getJSONObject(0).getString("sourceBundleId");
     }
 
-    KClass dt = datatypes.get(datatype);
+    final KClass dt = HealthDataConvertor.getDataType(datatype);
 
     if (dt == null) {
       callbackContext.error("Datatype " + datatype + " not supported");
       return;
     }
-
-    DataSource datasrc = new DataSource.Builder()
-      .setAppPackageName(sourceBundleId)
-//      .setDataType(dt)
-      .setType(DataSource.TYPE_RAW)
-      .build();
-
-    DataSet.Builder dataSetBuilder = DataSet.builder(datasrc);
-    DataPoint.Builder datapointBuilder = DataPoint.builder(datasrc);
-    datapointBuilder.setTimeInterval(st, et, TimeUnit.MILLISECONDS);
-    if (dt.equals(DataType.TYPE_STEP_COUNT_DELTA)) {
-      String value = args.getJSONObject(0).getString("value");
-      int steps = Integer.parseInt(value);
-      datapointBuilder.setField(Field.FIELD_STEPS, steps);
-    } else if (dt.equals(DataType.TYPE_DISTANCE_DELTA)) {
-      String value = args.getJSONObject(0).getString("value");
-      float dist = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_DISTANCE, dist);
-    } else if (dt.equals(DataType.TYPE_CALORIES_EXPENDED)) {
-      String value = args.getJSONObject(0).getString("value");
-      float cals = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_CALORIES, cals);
-    } else if (dt.equals(DataType.TYPE_HEIGHT)) {
-      String value = args.getJSONObject(0).getString("value");
-      float height = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_HEIGHT, height);
-    } else if (dt.equals(DataType.TYPE_WEIGHT)) {
-      String value = args.getJSONObject(0).getString("value");
-      float weight = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_WEIGHT, weight);
-    } else if (dt.equals(DataType.TYPE_HEART_RATE_BPM)) {
-      String value = args.getJSONObject(0).getString("value");
-      float hr = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_BPM, hr);
-    } else if (dt.equals(DataType.TYPE_BODY_FAT_PERCENTAGE)) {
-      String value = args.getJSONObject(0).getString("value");
-      float perc = Float.parseFloat(value);
-      datapointBuilder.setField(Field.FIELD_PERCENTAGE, perc);
-    } else if (dt.equals(DataType.TYPE_ACTIVITY_SEGMENT)) {
-      String value = args.getJSONObject(0).getString("value");
-      // special set activity function, see https://developers.google.com/android/reference/com/google/android/gms/fitness/data/Field#FIELD_ACTIVITY
-      datapointBuilder.setActivityField(Field.FIELD_ACTIVITY, value);
-    } else if (dt.equals(DataType.TYPE_HYDRATION)) {
-      float nuv = (float) args.getJSONObject(0).getDouble("value");
-      datapointBuilder.setField(Field.FIELD_VOLUME, nuv);
-    } else if (dt.equals(DataType.TYPE_NUTRITION)) {
-      if (datatype.startsWith("nutrition.")) {
-        //it's a single nutrient
-//        NutrientFieldInfo nuf = nutrientFields.get(datatype);
-        float nuv = (float) args.getJSONObject(0).getDouble("value");
-        Map<String, Float> value = new HashMap<>();
-//        value.put(nuf.field, nuv);
-        datapointBuilder.setField(Field.FIELD_NUTRIENTS, value);
-      } else {
-        // it's a nutrition object
-        JSONObject nutrobj = args.getJSONObject(0).getJSONObject("value");
-        String mealtype = nutrobj.getString("meal_type");
-        if (mealtype != null && !mealtype.isEmpty()) {
-          if (mealtype.equalsIgnoreCase("breakfast"))
-            datapointBuilder.setField(Field.FIELD_MEAL_TYPE, Field.MEAL_TYPE_BREAKFAST);
-          else if (mealtype.equalsIgnoreCase("lunch"))
-            datapointBuilder.setField(Field.FIELD_MEAL_TYPE, Field.MEAL_TYPE_LUNCH);
-          else if (mealtype.equalsIgnoreCase("snack"))
-            datapointBuilder.setField(Field.FIELD_MEAL_TYPE, Field.MEAL_TYPE_SNACK);
-          else if (mealtype.equalsIgnoreCase("dinner"))
-            datapointBuilder.setField(Field.FIELD_MEAL_TYPE, Field.MEAL_TYPE_DINNER);
-          else datapointBuilder.setField(Field.FIELD_MEAL_TYPE, Field.MEAL_TYPE_UNKNOWN);
-        }
-        String item = nutrobj.getString("item");
-        if (item != null && !item.isEmpty()) {
-          datapointBuilder.setField(Field.FIELD_FOOD_ITEM, item);
-        }
-        JSONObject nutrientsobj = nutrobj.getJSONObject("nutrients");
-        if (nutrientsobj != null) {
-          Map<String, Float> value = new HashMap<>();
-          Iterator<String> nutrients = nutrientsobj.keys();
-          while (nutrients.hasNext()) {
-            String nutrientName = nutrients.next();
-//            NutrientFieldInfo nuf = nutrientFields.get(nutrientName);
-//            if (nuf != null) {
-//              float nuv = (float) nutrientsobj.getDouble(nutrientName);
-//              value.put(nuf.field, nuv);
-//            }
-          }
-          datapointBuilder.setField(Field.FIELD_NUTRIENTS, value);
-        }
-      }
-    } else if (dt.equals(HealthDataTypes.TYPE_BLOOD_GLUCOSE)) {
-      JSONObject glucoseobj = args.getJSONObject(0).getJSONObject("value");
-      float glucose = (float) glucoseobj.getDouble("glucose");
-      datapointBuilder.setField(HealthFields.FIELD_BLOOD_GLUCOSE_LEVEL, glucose);
-
-      if (glucoseobj.has("meal")) {
-        String meal = glucoseobj.getString("meal");
-        int mealType = Field.MEAL_TYPE_UNKNOWN;
-        int relationToMeal = HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_GENERAL;
-        if (meal.equalsIgnoreCase("fasting")) {
-          mealType = Field.MEAL_TYPE_UNKNOWN;
-          relationToMeal = HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_FASTING;
-        } else {
-          if (meal.startsWith("before_")) {
-            relationToMeal = HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_BEFORE_MEAL;
-            meal = meal.substring("before_".length());
-          } else if (meal.startsWith("after_")) {
-            relationToMeal = HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL_AFTER_MEAL;
-            meal = meal.substring("after_".length());
-          }
-          if (meal.equalsIgnoreCase("dinner")) {
-            mealType = Field.MEAL_TYPE_DINNER;
-          } else if (meal.equalsIgnoreCase("lunch")) {
-            mealType = Field.MEAL_TYPE_LUNCH;
-          } else if (meal.equalsIgnoreCase("snack")) {
-            mealType = Field.MEAL_TYPE_SNACK;
-          } else if (meal.equalsIgnoreCase("breakfast")) {
-            mealType = Field.MEAL_TYPE_BREAKFAST;
-          }
-        }
-        datapointBuilder.setField(HealthFields.FIELD_TEMPORAL_RELATION_TO_MEAL, relationToMeal);
-        datapointBuilder.setField(Field.FIELD_MEAL_TYPE, mealType);
-      }
-
-      if (glucoseobj.has("sleep")) {
-        String sleep = glucoseobj.getString("sleep");
-        int relationToSleep = HealthFields.TEMPORAL_RELATION_TO_SLEEP_FULLY_AWAKE;
-        if (sleep.equalsIgnoreCase("before_sleep")) {
-          relationToSleep = HealthFields.TEMPORAL_RELATION_TO_SLEEP_BEFORE_SLEEP;
-        } else if (sleep.equalsIgnoreCase("on_waking")) {
-          relationToSleep = HealthFields.TEMPORAL_RELATION_TO_SLEEP_ON_WAKING;
-        } else if (sleep.equalsIgnoreCase("during_sleep")) {
-          relationToSleep = HealthFields.TEMPORAL_RELATION_TO_SLEEP_DURING_SLEEP;
-        }
-        datapointBuilder.setField(HealthFields.FIELD_TEMPORAL_RELATION_TO_SLEEP, relationToSleep);
-      }
-
-      if (glucoseobj.has("source")) {
-        String source = glucoseobj.getString("source");
-        int specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_CAPILLARY_BLOOD;
-        if (source.equalsIgnoreCase("interstitial_fluid")) {
-          specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_INTERSTITIAL_FLUID;
-        } else if (source.equalsIgnoreCase("plasma")) {
-          specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_PLASMA;
-        } else if (source.equalsIgnoreCase("serum")) {
-          specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_SERUM;
-        } else if (source.equalsIgnoreCase("tears")) {
-          specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_TEARS;
-        } else if (source.equalsIgnoreCase("whole_blood")) {
-          specimenSource = HealthFields.BLOOD_GLUCOSE_SPECIMEN_SOURCE_WHOLE_BLOOD;
-        }
-        datapointBuilder.setField(HealthFields.FIELD_BLOOD_GLUCOSE_SPECIMEN_SOURCE, specimenSource);
-      }
-    } else if (dt == HealthDataTypes.TYPE_BLOOD_PRESSURE) {
-      JSONObject bpobj = args.getJSONObject(0).getJSONObject("value");
-      if (bpobj.has("systolic")) {
-        float systolic = (float) bpobj.getDouble("systolic");
-        datapointBuilder.setField(HealthFields.FIELD_BLOOD_PRESSURE_SYSTOLIC, systolic);
-      }
-      if (bpobj.has("diastolic")) {
-        float diastolic = (float) bpobj.getDouble("diastolic");
-        datapointBuilder.setField(HealthFields.FIELD_BLOOD_PRESSURE_DIASTOLIC, diastolic);
-      }
-    } else if (dt == DataType.TYPE_SLEEP_SEGMENT) {
-      String value = args.getJSONObject(0).getString("value");
-      if (value.equalsIgnoreCase("sleep")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.SLEEP);
-      } else if (value.equalsIgnoreCase("sleep.light")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.SLEEP_LIGHT);
-      } else if (value.equalsIgnoreCase("sleep.deep")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.SLEEP_DEEP);
-      } else if (value.equalsIgnoreCase("sleep.rem")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.SLEEP_REM);
-      } else if (value.equalsIgnoreCase("sleep.inBed")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.AWAKE);
-      } else if (value.equalsIgnoreCase("sleep.awake")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.AWAKE);
-      } else if (value.equalsIgnoreCase("sleep.outOfBed")) {
-        datapointBuilder.setField(Field.FIELD_SLEEP_SEGMENT_TYPE, SleepStages.OUT_OF_BED);
-      } else {
-        callbackContext.error("Unknown sleep value " + value);
-        return;
-      }
-    }
-    dataSetBuilder.add(datapointBuilder.build());
-
-//    Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-//      .insertData(dataSetBuilder.build())
-//      .addOnSuccessListener(r -> {
-//        callbackContext.success();
-//      })
-//      .addOnFailureListener(err -> {
-////        err.getCause().printStackTrace();
-//        callbackContext.error(err.getMessage());
-//      });
   }
 
   // deletes data points in a given time window
@@ -1648,25 +691,11 @@ public class HealthPlugin extends CordovaPlugin {
     }
     final String datatype = args.getJSONObject(0).getString("dataType");
 
-    KClass dt = datatypes.get(datatype);
+    final KClass dt = HealthDataConvertor.getDataType(datatype);
     if (dt == null) {
       callbackContext.error("Datatype " + datatype + " not supported");
       return;
     }
 
-    DataDeleteRequest request = new DataDeleteRequest.Builder()
-      .setTimeInterval(st, et, TimeUnit.MILLISECONDS)
-      .addDataType(dt)
-      .build();
-
-//    Fitness.getHistoryClient(this.cordova.getContext(), this.account)
-//      .deleteData(request)
-//      .addOnSuccessListener(r -> {
-//        callbackContext.success();
-//      })
-//      .addOnFailureListener(err -> {
-////        err.getCause().printStackTrace();
-//        callbackContext.error(err.getMessage());
-//      });
   }
 }

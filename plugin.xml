@@ -84,7 +84,7 @@
 
   <!-- android -->
   <platform name="android">
-    <framework src="androidx.health.connect:connect-client::$CONNECT_API_VERSION" />
+    <framework src="androidx.health.connect:connect-client:$CONNECT_API_VERSION" />
     <preference name="CONNECT_API_VERSION" default="1.1.0-alpha03"/>
 
     <framework src="org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3" />

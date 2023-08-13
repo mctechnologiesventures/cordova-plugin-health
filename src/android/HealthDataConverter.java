@@ -190,7 +190,7 @@ public class HealthDataConvertor {
     try {
       int recordingMethod =  record.getMetadata().getRecordingMethod();
 
-      if (filtered && recordingMethod != Metadata.RECORDING_METHOD_MANUAL_ENTRY) {
+      if (filtered && recordingMethod == Metadata.RECORDING_METHOD_MANUAL_ENTRY) {
         return null;
       }
       String sourceName = record.getMetadata().getDataOrigin().getPackageName();

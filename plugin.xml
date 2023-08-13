@@ -84,12 +84,10 @@
 
   <!-- android -->
   <platform name="android">
-    <framework src="com.google.android.gms:play-services-fitness:$FIT_API_VERSION" />
-    <preference name="FIT_API_VERSION" default="21.1.0"/>
+    <framework src="androidx.health.connect:connect-client::$CONNECT_API_VERSION" />
+    <preference name="CONNECT_API_VERSION" default="1.1.0-alpha03"/>
 
-    <framework src="com.google.android.gms:play-services-auth:$PLAY_AUTH_VERSION" />
-    <preference name="PLAY_AUTH_VERSION" default="20.2.0"/>
-
+    <framework src="org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3" />
 
     <config-file target="AndroidManifest.xml" parent="/*">
       <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -99,7 +97,15 @@
       <uses-permission android:name="android.gms.permission.ACTIVITY_RECOGNITION"/>
       <!-- Use the following if API target is > 30 -->
       <queries>
-        <package android:name="com.google.android.apps.fitness" />
+        <package android:name="com.google.android.apps.healthdata" />
+          <!--
+              This is required such that the app can query and resolve packages that have written
+              Health Connect data, and obtain their friendly App Name and Icon to show for data
+              attribution in the app
+          -->
+          <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+          </intent>
       </queries>
     </config-file>
 
@@ -108,7 +114,6 @@
         <param name="android-package" value="org.apache.cordova.health.HealthPlugin" />
         <param name="onload" value="true"/>
       </feature>
-      <access origin="https://accounts.google.com/*" />
     </config-file>
 
     <source-file src="src/android/HealthPlugin.java" target-dir="src/org/apache/cordova/health/" />

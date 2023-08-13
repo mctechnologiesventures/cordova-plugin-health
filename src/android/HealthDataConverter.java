@@ -18,11 +18,14 @@ import androidx.health.connect.client.records.SleepSessionRecord;
 import androidx.health.connect.client.records.StepsRecord;
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord;
 import androidx.health.connect.client.records.WeightRecord;
+import androidx.health.connect.client.records.metadata.DataOrigin;
+import androidx.health.connect.client.records.metadata.Device;
 import androidx.health.connect.client.records.metadata.Metadata;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,6 +41,7 @@ public class HealthDataConvertor {
 
   static {
     datatypes.put("steps", Reflection.getOrCreateKotlinClass(StepsRecord.class));
+    datatypes.put("activity", Reflection.getOrCreateKotlinClass(ExerciseSessionRecord.class));
     datatypes.put("calories", Reflection.getOrCreateKotlinClass(TotalCaloriesBurnedRecord.class));
     datatypes.put("calories.basal", Reflection.getOrCreateKotlinClass(TotalCaloriesBurnedRecord.class));
     datatypes.put("height", Reflection.getOrCreateKotlinClass(HeightRecord.class));
@@ -55,10 +59,6 @@ public class HealthDataConvertor {
 
   public static Set<AggregateMetric<?>> getAggregateMetricsForDataType(String dataType) {
     switch (dataType) {
-      case "steps":
-        return new HashSet<>(Arrays.asList(
-          StepsRecord.COUNT_TOTAL
-        ));
       case "activity":
         return new HashSet<>(Arrays.asList(
         ExerciseSessionRecord.EXERCISE_DURATION_TOTAL,
@@ -79,8 +79,8 @@ public class HealthDataConvertor {
   static {
     aggregateMetricMap.put(StepsRecord.COUNT_TOTAL, "value");
     aggregateMetricMap.put(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL, "activity");
-    aggregateMetricMap.put(DistanceRecord.DISTANCE_TOTAL, "activity");
-    aggregateMetricMap.put(TotalCaloriesBurnedRecord.ENERGY_TOTAL, "activity");
+    aggregateMetricMap.put(DistanceRecord.DISTANCE_TOTAL, "distance");
+    aggregateMetricMap.put(TotalCaloriesBurnedRecord.ENERGY_TOTAL, "calories");
   }
 
   public static Map<Integer, String> workoutTypeMap = new HashMap<Integer, String>();
@@ -222,12 +222,16 @@ public class HealthDataConvertor {
           obj.put("startDate", distanceRecord.getStartTime().toEpochMilli());
           obj.put("endDate", distanceRecord.getEndTime().toEpochMilli());
           break;
-//        case "activity":
-//          ExerciseSessionRecord exerciseRecord = (ExerciseSessionRecord) record;
-//          obj.put("unit", "s");
-//          obj.put("startDate", exerciseRecord.getStartTime());
-//          obj.put("endDate", exerciseRecord.getEndTime());
-//          break;
+        case "activity":
+          ExerciseSessionRecord exerciseRecord = (ExerciseSessionRecord) record;
+          obj.put("unit", "activitySummary");
+          Instant startTime = exerciseRecord.getStartTime();
+          Instant endTime = exerciseRecord.getEndTime();
+          obj.put("startDate", startTime);
+          obj.put("endDate", endTime);
+          obj.put("duration", (endTime.toEpochMilli() - startTime.toEpochMilli()) / 1000);
+          obj.put("value", getWorkoutType(exerciseRecord.getExerciseType()));
+          break;
         case "weight":
           WeightRecord weightRecord = (WeightRecord) record;
 //            obj.put("value", weightRecord.getWeight().getKg());
@@ -251,5 +255,32 @@ public class HealthDataConvertor {
       throw new RuntimeException(e);
     }
     return obj;
+  }
+
+  public static Record createRecord(String dataType, String value, String packageName, long st, long et) {
+    Record newRecord = null;
+    Metadata metadata = new Metadata(
+      "id",
+      new DataOrigin(packageName),
+      Instant.now(),
+      "",
+      0,
+      new Device(),
+      Metadata.RECORDING_METHOD_MANUAL_ENTRY
+      );
+    Instant start = Instant.ofEpochMilli(st);
+    Instant end = Instant.ofEpochMilli(et);
+    if (dataType.equals("steps")) {
+      newRecord = new StepsRecord(
+        start,
+        null,
+        end,
+        null,
+        Integer.parseInt(value),
+        metadata
+      );
+      // TODO: add other types
+    }
+    return newRecord;
   }
 }

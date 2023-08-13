@@ -14,14 +14,18 @@ import androidx.health.connect.client.aggregate.AggregateMetric;
 import androidx.health.connect.client.aggregate.AggregationResult;
 import androidx.health.connect.client.aggregate.AggregationResultGroupedByDuration;
 import androidx.health.connect.client.aggregate.AggregationResultGroupedByPeriod;
+import androidx.health.connect.client.records.DistanceRecord;
+import androidx.health.connect.client.records.ExerciseSessionRecord;
+import androidx.health.connect.client.records.Record;
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord;
 import androidx.health.connect.client.request.AggregateGroupByDurationRequest;
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest;
 import androidx.health.connect.client.request.AggregateRequest;
 import androidx.health.connect.client.request.ReadRecordsRequest;
 import androidx.health.connect.client.PermissionController;
 import androidx.health.connect.client.permission.HealthPermission;
-import androidx.health.connect.client.records.StepsRecord;
 import androidx.health.connect.client.records.metadata.DataOrigin;
+import androidx.health.connect.client.response.InsertRecordsResponse;
 import androidx.health.connect.client.response.ReadRecordsResponse;
 import androidx.health.connect.client.time.TimeRangeFilter;
 
@@ -39,15 +43,19 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import kotlin.Result;
+import kotlin.Unit;
 import kotlin.coroutines.Continuation;
 import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
 import kotlin.jvm.internal.Reflection;
 import kotlin.reflect.KClass;
+import kotlinx.coroutines.BuildersKt;
 
 /**
  * Health plugin Android code.
@@ -109,40 +117,14 @@ public class HealthPlugin extends CordovaPlugin {
   // asks for dynamic permissions on Android 6 and more
   private void requestDynamicPermissions() {
     requestedPermissions = new HashSet<>();
-    // see https://developers.google.com/fit/android/authorization#data_types_that_need_android_permissions
-    if (authReadTypes.contains("steps")) {
-      requestedPermissions.add(HealthPermission.getReadPermission(Reflection.getOrCreateKotlinClass(StepsRecord.class)));
-    }
 
-//    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-//      // new Android 10 permissions
-//      if (authReadTypes.contains("steps") || authReadTypes.contains("activity")
-//        || authReadWriteTypes.contains("steps") || authReadWriteTypes.contains("activity")
-//        || authReadWriteTypes.contains("calories") || authReadWriteTypes.contains("calories.active")) {
-//        if (!cordova.hasPermission(Manifest.permission.ACTIVITY_RECOGNITION))
-//          dynPerms.add(Manifest.permission.ACTIVITY_RECOGNITION);
-//      }
-//    }
-//    if (authReadTypes.contains("distance") || authReadWriteTypes.contains("distance")) {
-//      if (!cordova.hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
-//        dynPerms.add(Manifest.permission.ACCESS_FINE_LOCATION);
-//    }
-//    if (authReadTypes.contains("heart_rate")) {
-//      if (!cordova.hasPermission(Manifest.permission.BODY_SENSORS))
-//        dynPerms.add(Manifest.permission.BODY_SENSORS);
-//    }
-//    if (dynPerms.isEmpty()) {
-//      // no dynamic permissions to ask
-//      accessGoogleFit();
-//    } else {
-//      if (authAutoresolve) {
-//        cordova.requestPermissions(this, REQUEST_DYN_PERMS, dynPerms.toArray(new String[dynPerms.size()]));
-//        // the request results will be taken care of by onRequestPermissionResult()
-//      } else {
-//        // if should not autoresolve, and there are dynamic permissions needed, send a false
-//        authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, false));
-//      }
-//    }
+    for (String authReadType : authReadTypes) {
+      requestedPermissions.add(HealthPermission.getReadPermission(HealthDataConvertor.getDataType(authReadType)));
+    }
+    for (String authReadType : authReadWriteTypes) {
+      requestedPermissions.add(HealthPermission.getReadPermission(HealthDataConvertor.getDataType(authReadType)));
+      requestedPermissions.add(HealthPermission.getWritePermission(HealthDataConvertor.getDataType(authReadType)));
+    }
 
     healthClient.getPermissionController().getGrantedPermissions(
       new Continuation<Set<String>>() {
@@ -172,13 +154,13 @@ public class HealthPlugin extends CordovaPlugin {
   @Override
   public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException {
     if (requestCode == REQUEST_DYN_PERMS) {
-      for (int i = 0; i < grantResults.length; i++) {
-        if (grantResults[i] == PackageManager.PERMISSION_DENIED) {
-          String errmsg = "Permission denied ";
+      for (int grantResult : grantResults) {
+        if (grantResult == PackageManager.PERMISSION_DENIED) {
+          StringBuilder errMsg = new StringBuilder("Permission denied ");
           for (String perm : permissions) {
-            errmsg += " " + perm;
+            errMsg.append(" ").append(perm).append("\n");
           }
-          authReqCallbackCtx.error("Permission denied: " + permissions[i]);
+          authReqCallbackCtx.error("Permission denied: " + errMsg);
           return;
         }
       }
@@ -193,8 +175,7 @@ public class HealthPlugin extends CordovaPlugin {
    * @param action          The action to execute.
    * @param args            The exec() arguments.
    * @param callbackContext The callback context used when calling back into JavaScript.
-   * @return
-   * @throws JSONException
+   * @return boolean
    */
   @Override
   public boolean execute(String action, final JSONArray args, final CallbackContext callbackContext) throws JSONException {
@@ -206,86 +187,65 @@ public class HealthPlugin extends CordovaPlugin {
       promptInstall(callbackContext);
       return true;
     } else if ("requestAuthorization".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            checkAuthorization(args, callbackContext); // with autoresolve
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          checkAuthorization(args, callbackContext); // with autoresolve
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("checkAuthorization".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            checkAuthorization(args, callbackContext); // without autoresolve
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          checkAuthorization(args, callbackContext); // without autoresolve
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("isAuthorized".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            checkAuthorization(args, callbackContext); // without autoresolve
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          checkAuthorization(args, callbackContext); // without autoresolve
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("query".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            query(args, callbackContext);
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          query(args, callbackContext);
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("queryAggregated".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            queryAggregated(args, callbackContext);
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          queryAggregated(args, callbackContext);
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("store".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            store(args, callbackContext);
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          store(args, callbackContext);
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
     } else if ("delete".equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            delete(args, callbackContext);
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
+      cordova.getThreadPool().execute(() -> {
+        try {
+          delete(args, callbackContext);
+        } catch (Exception ex) {
+          callbackContext.error(ex.getMessage());
         }
       });
       return true;
@@ -296,11 +256,6 @@ public class HealthPlugin extends CordovaPlugin {
 
   // detects if a) Google APIs are available, b) Google Fit is actually installed
   private void isAvailable(final CallbackContext callbackContext) {
-    // first check that the Google APIs are available
-//    GoogleApiAvailability gapi = GoogleApiAvailability.getInstance();
-//    int apiresult = gapi.isGooglePlayServicesAvailable(this.cordova.getActivity());
-//    if (apiresult == ConnectionResult.SUCCESS) {
-      // then check that Google Fit is actually installed
       int status = HealthConnectClient.getSdkStatus(this.cordova.getActivity().getApplicationContext());
       PluginResult.Status pluginResult = PluginResult.Status.OK;
       if (status == HealthConnectClient.SDK_AVAILABLE) {
@@ -323,29 +278,18 @@ public class HealthPlugin extends CordovaPlugin {
 
   // prompts to install GooglePlayServices if not available then Google Fit if not available
   private void promptInstall(final CallbackContext callbackContext) {
-//    GoogleApiAvailability gapi = GoogleApiAvailability.getInstance();
-//    int apiresult = gapi.isGooglePlayServicesAvailable(this.cordova.getActivity());
-//    if (apiresult != ConnectionResult.SUCCESS) {
-//      if (gapi.isUserResolvableError(apiresult)) {
-//        // show the dialog, but no action is performed afterwards
-//        gapi.showErrorDialogFragment(this.cordova.getActivity(), apiresult, 1000);
-//      }
-//    } else {
-      // check that Google Fit is actually installed
-      PackageManager pm = cordova.getActivity().getApplicationContext().getPackageManager();
+    PackageManager pm = cordova.getActivity().getApplicationContext().getPackageManager();
+    try {
+      pm.getPackageInfo("com.google.android.apps.healthdata", PackageManager.GET_ACTIVITIES);
+    } catch (PackageManager.NameNotFoundException e) {
+      // show popup for downloading app
+      // code from http://stackoverflow.com/questions/11753000/how-to-open-the-google-play-store-directly-from-my-android-application
       try {
-        pm.getPackageInfo("com.google.android.apps.healthdata", PackageManager.GET_ACTIVITIES);
-      } catch (PackageManager.NameNotFoundException e) {
-        // show popup for downloading app
-        // code from http://stackoverflow.com/questions/11753000/how-to-open-the-google-play-store-directly-from-my-android-application
-        try {
-          cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")));
-        } catch (android.content.ActivityNotFoundException anfe) {
-          cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata")));
-        }
+        cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")));
+      } catch (android.content.ActivityNotFoundException anfe) {
+        cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata")));
       }
-//    }
-//    callbackContext.success();
+    }
   }
 
   // check if the app is authorised to use Google fitness APIs
@@ -412,12 +356,47 @@ public class HealthPlugin extends CordovaPlugin {
         @Override
         public void resumeWith(@NonNull Object o) {
           if (o instanceof ReadRecordsResponse) {
-            ReadRecordsResponse readResponse = (ReadRecordsResponse) o;
+            ReadRecordsResponse<Record> readResponse = (ReadRecordsResponse<Record>) o;
             List<androidx.health.connect.client.records.Record> records = readResponse.getRecords();
             JSONArray resultSet = new JSONArray();
             for (androidx.health.connect.client.records.Record record : records) {
               JSONObject data = HealthDataConvertor.parseRecordForType(record, datatype, filtered);
               if (data != null) {
+                if (datatype.equals("activity")) {
+                  try {
+                    ExerciseSessionRecord exerciseSessionRecord = (ExerciseSessionRecord) record;
+                    ReadRecordsRequest<DistanceRecord> distanceRequest = new ReadRecordsRequest<DistanceRecord>(
+                      HealthDataConvertor.getDataType("distance"),
+                      TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
+                      dataOrigins,
+                      true,
+                      limit,
+                      null
+                      );
+                    double totalDistance = 0;
+                    ReadRecordsResponse<DistanceRecord> distanceRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(distanceRequest, continuation));
+                    for (DistanceRecord distance : distanceRecord.getRecords()) {
+                      totalDistance += distance.getDistance().getMeters();
+                    }
+                    data.put("distance", totalDistance);
+                    ReadRecordsRequest<TotalCaloriesBurnedRecord> caloriesRequest = new ReadRecordsRequest<TotalCaloriesBurnedRecord>(
+                      HealthDataConvertor.getDataType("calories"),
+                      TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
+                      dataOrigins,
+                      true,
+                      limit,
+                      null
+                      );
+                    double totalCalories = 0;
+                    ReadRecordsResponse<TotalCaloriesBurnedRecord> caloriesRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(caloriesRequest, continuation));
+                    for (TotalCaloriesBurnedRecord calories : caloriesRecord.getRecords()) {
+                      totalCalories += calories.getEnergy().getKilocalories();
+                    }
+                    data.put("calories", totalCalories);
+                  } catch (Exception e) {
+                    e.printStackTrace();
+                  }
+                }
                 resultSet.put(data);
               }
             }
@@ -589,13 +568,13 @@ public class HealthPlugin extends CordovaPlugin {
       limit = args.getJSONObject(0).getInt("limit");
     }
 
+//    if (HealthDataConvertor.getAggregateMetricsForDataType(datatype) != null ) {
+//      queryAggregatedData(callbackContext, datatype, st, et, filtered, dataOrigins);
+//      return;
+//    }
+
     if (HealthDataConvertor.getDataType(datatype) != null) {
       queryRawData(callbackContext, datatype, st, et, filtered, limit, dataOrigins);
-      return;
-    }
-
-    if (HealthDataConvertor.getAggregateMetricsForDataType(datatype) != null ) {
-      queryAggregatedData(callbackContext, datatype, st, et, filtered, dataOrigins);
       return;
     }
 
@@ -659,18 +638,35 @@ public class HealthPlugin extends CordovaPlugin {
       callbackContext.error("Missing argument value");
       return;
     }
+    String value = args.getJSONObject(0).getString("value");
+    if (!args.getJSONObject(0).has("value")) {
+      callbackContext.error("Missing argument value");
+      return;
+    }
 
     String sourceBundleId = cordova.getActivity().getApplicationContext().getPackageName();
     if (args.getJSONObject(0).has("sourceBundleId")) {
       sourceBundleId = args.getJSONObject(0).getString("sourceBundleId");
     }
+    ArrayList<Record> records = new ArrayList<>();
+    records.add(HealthDataConvertor.createRecord(datatype, value, sourceBundleId,st, et));
+    healthClient.insertRecords(records, new Continuation<InsertRecordsResponse>() {
+      @NonNull
+      @Override
+      public CoroutineContext getContext() {
+        return EmptyCoroutineContext.INSTANCE;
+      }
 
-    final KClass dt = HealthDataConvertor.getDataType(datatype);
+      @Override
+      public void resumeWith(@NonNull Object o) {
 
-    if (dt == null) {
-      callbackContext.error("Datatype " + datatype + " not supported");
-      return;
-    }
+        if (o instanceof Result.Failure) {
+          callbackContext.error(((Result.Failure) o).exception.getMessage());
+        } else {
+          callbackContext.success();
+        }
+      }
+    });
   }
 
   // deletes data points in a given time window
@@ -694,8 +690,25 @@ public class HealthPlugin extends CordovaPlugin {
     final KClass dt = HealthDataConvertor.getDataType(datatype);
     if (dt == null) {
       callbackContext.error("Datatype " + datatype + " not supported");
-      return;
     }
 
+    Instant start = Instant.ofEpochMilli(st);
+    Instant end = Instant.ofEpochMilli(et);
+    healthClient.deleteRecords(dt, TimeRangeFilter.between(start, end), new Continuation<Unit>() {
+      @NonNull
+      @Override
+      public CoroutineContext getContext() {
+        return EmptyCoroutineContext.INSTANCE;
+      }
+
+      @Override
+      public void resumeWith(@NonNull Object o) {
+        if (o instanceof Result.Failure) {
+          callbackContext.error(((Result.Failure) o).exception.getMessage());
+        } else {
+          callbackContext.success();
+      }
+      }
+    });
   }
 }

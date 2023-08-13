@@ -116,6 +116,7 @@
       </feature>
     </config-file>
 
+    <source-file src="src/android/HealthDataConverter.java" target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/HealthPlugin.java" target-dir="src/org/apache/cordova/health/" />
 
     <js-module src="www/android/health.js" name="health">

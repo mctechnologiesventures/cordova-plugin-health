@@ -66,6 +66,10 @@ public class HealthDataConvertor {
           DistanceRecord.DISTANCE_TOTAL,
           TotalCaloriesBurnedRecord.ENERGY_TOTAL
         ));
+      case "steps":
+        return new HashSet<>(Arrays.asList(
+          StepsRecord.COUNT_TOTAL
+          ));
     }
     return null;
   }

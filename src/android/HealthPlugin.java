@@ -97,25 +97,37 @@ public class HealthPlugin extends CordovaPlugin {
     }
   }
 
+  public void safeInitClient() {
+    if (healthClient != null) return;
+    try {
+      healthClient = HealthConnectClient.getOrCreate(cordova.getContext());
+    } catch (Exception err) {
+      err.printStackTrace();
+    }
+  }
+
   // general initialization
   @Override
   public void initialize(CordovaInterface cordova, CordovaWebView webView) {
 
     super.initialize(cordova, webView);
     this.cordova = cordova;
-    healthClient = HealthConnectClient.getOrCreate(cordova.getContext());
-    ActivityResultContract requestPermissionActivityContract  =  PermissionController.createRequestPermissionResultContract();
+    safeInitClient();
+
+    ActivityResultContract requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract();
     requestPermissionLauncher = this.cordova.getActivity().registerForActivityResult(requestPermissionActivityContract, new ActivityResultCallback<Set<String>>() {
       @Override
       public void onActivityResult(Set<String> granted) {
         onNewPermissionResult(granted);
       }
     });
+
   }
 
   // called once custom data types have been created
   // asks for dynamic permissions on Android 6 and more
   private void requestDynamicPermissions() {
+    safeInitClient();
     requestedPermissions = new HashSet<>();
 
     for (String authReadType : authReadTypes) {
@@ -266,10 +278,10 @@ public class HealthPlugin extends CordovaPlugin {
         return;
       } else if (status == HealthConnectClient.SDK_UNAVAILABLE) {
         Log.d(TAG, "HealthConnectClient unavailable");
-        pluginResult = PluginResult.Status.ERROR;
+//        pluginResult = PluginResult.Status.ERROR;
       } else if (status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
         Log.d(TAG, "HealthConnectClient unavailable provider update required");
-        pluginResult = PluginResult.Status.ERROR;
+//        pluginResult = PluginResult.Status.ERROR;
       }
     PluginResult result;
     result = new PluginResult(pluginResult, false);
@@ -331,7 +343,7 @@ public class HealthPlugin extends CordovaPlugin {
 
   private void queryRawData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered, final int limit,
                             final Set<DataOrigin> dataOrigins ) {
-
+    safeInitClient();
     final KClass dt = HealthDataConvertor.getDataType(datatype);
     final Instant startInstant = Instant.ofEpochMilli(st);
     final Instant endInstant = Instant.ofEpochMilli(et);
@@ -407,6 +419,7 @@ public class HealthPlugin extends CordovaPlugin {
 
   void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
                            final Set<DataOrigin> dataOrigins) {
+    safeInitClient();
     final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
     final Instant startInstant = Instant.ofEpochMilli(st);
     final Instant endInstant = Instant.ofEpochMilli(et);
@@ -440,6 +453,7 @@ public class HealthPlugin extends CordovaPlugin {
 
   void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
                            final Set<DataOrigin> dataOrigins, String bucketType) {
+    safeInitClient();
     final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
     final Instant startInstant = Instant.ofEpochMilli(st);
     final Instant endInstant = Instant.ofEpochMilli(et);
@@ -619,6 +633,7 @@ public class HealthPlugin extends CordovaPlugin {
 
   // stores a data point
   private void store(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+    safeInitClient();
     if (!args.getJSONObject(0).has("startDate")) {
       callbackContext.error("Missing argument startDate");
       return;
@@ -671,6 +686,7 @@ public class HealthPlugin extends CordovaPlugin {
 
   // deletes data points in a given time window
   private void delete(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+    safeInitClient();
     if (!args.getJSONObject(0).has("startDate")) {
       callbackContext.error("Missing argument startDate");
       return;

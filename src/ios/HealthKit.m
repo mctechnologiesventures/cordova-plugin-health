@@ -1400,8 +1400,8 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
     NSPredicate *predicate2 = nil;
 
-    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
-    if (filterOutUserInput) {
+    BOOL filtered = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
+    if (filtered) {
         predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
     }
 
@@ -1565,8 +1565,8 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
     NSPredicate *predicate2 = nil;
 
-    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
-    if (filterOutUserInput) {
+    BOOL filtered = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
+    if (filtered) {
         predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
     }
 

@@ -180,9 +180,13 @@ public class HealthDataConvertor {
           }
         }
         obj.put("value", value);
-      }
-      if (metrics.size() == 1) {
-        obj.put("value", result.get(metrics.iterator().next()));
+      } else if (metrics.size() == 1) {
+        AggregateMetric metric = metrics.iterator().next();
+        if (metric != null && result.get(metric) != null) {
+          obj.put("value", result.get(metric));
+        } else {
+          obj.put("value", 0);
+        }
       }
     } catch (JSONException e) {
      e.printStackTrace();

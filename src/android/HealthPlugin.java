@@ -8,7 +8,6 @@ import android.util.Log;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContract;
-import androidx.annotation.NonNull;
 import androidx.health.connect.client.HealthConnectClient;
 import androidx.health.connect.client.aggregate.AggregateMetric;
 import androidx.health.connect.client.aggregate.AggregationResult;
@@ -48,12 +47,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import kotlin.Result;
-import kotlin.Unit;
-import kotlin.coroutines.Continuation;
-import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
-import kotlin.jvm.internal.Reflection;
 import kotlin.reflect.KClass;
 import kotlinx.coroutines.BuildersKt;
 
@@ -138,28 +132,23 @@ public class HealthPlugin extends CordovaPlugin {
       requestedPermissions.add(HealthPermission.getWritePermission(HealthDataConvertor.getDataType(authReadType)));
     }
 
-    healthClient.getPermissionController().getGrantedPermissions(
-      new Continuation<Set<String>>() {
-        @NonNull
-        @Override
-        public CoroutineContext getContext() {
-          return EmptyCoroutineContext.INSTANCE;
-        }
+    try {
+      Set<String> grantedPermissions = BuildersKt.runBlocking(
+        EmptyCoroutineContext.INSTANCE,
+        (s, c) -> healthClient.getPermissionController().getGrantedPermissions(c)
+      );
+      if (grantedPermissions.containsAll(requestedPermissions)) {
+        // Permissions successfully granted
+        authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
+      } else {
+        // Lack of required permissions
+        requestPermissionLauncher.launch(requestedPermissions);
+      }
 
-        @Override
-        public void resumeWith(@NonNull Object o) {
-          if (o instanceof Set<?>) {
-            Set<String> granted = (Set<String>) o;
-            if (granted.containsAll(requestedPermissions)) {
-              // Permissions successfully granted
-              authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
-            } else {
-              // Lack of required permissions
-              requestPermissionLauncher.launch(requestedPermissions);
-            }
-          }
-        }
-      });
+    } catch (Exception e) {
+      e.printStackTrace();
+      authReqCallbackCtx.error("Error while requesting permissions");
+    }
   }
 
   // called when the dynamic permissions are asked
@@ -357,64 +346,59 @@ public class HealthPlugin extends CordovaPlugin {
       null
 
     );
-    healthClient.readRecords(readRecordsRequest,
-      new Continuation<Object>() {
-        @NonNull
-        @Override
-        public CoroutineContext getContext() {
-          return EmptyCoroutineContext.INSTANCE;
-        }
-
-        @Override
-        public void resumeWith(@NonNull Object o) {
-          if (o instanceof ReadRecordsResponse) {
-            ReadRecordsResponse<Record> readResponse = (ReadRecordsResponse<Record>) o;
-            List<androidx.health.connect.client.records.Record> records = readResponse.getRecords();
-            JSONArray resultSet = new JSONArray();
-            for (androidx.health.connect.client.records.Record record : records) {
-              JSONObject data = HealthDataConvertor.parseRecordForType(record, datatype, filtered);
-              if (data != null) {
-                if (datatype.equals("activity")) {
-                  try {
-                    ExerciseSessionRecord exerciseSessionRecord = (ExerciseSessionRecord) record;
-                    ReadRecordsRequest<DistanceRecord> distanceRequest = new ReadRecordsRequest<DistanceRecord>(
-                      HealthDataConvertor.getDataType("distance"),
-                      TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
-                      dataOrigins,
-                      true,
-                      limit,
-                      null
-                      );
-                    double totalDistance = 0;
-                    ReadRecordsResponse<DistanceRecord> distanceRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(distanceRequest, continuation));
-                    for (DistanceRecord distance : distanceRecord.getRecords()) {
-                      totalDistance += distance.getDistance().getMeters();
-                    }
-                    data.put("distance", totalDistance);
-                    ReadRecordsRequest<TotalCaloriesBurnedRecord> caloriesRequest = new ReadRecordsRequest<TotalCaloriesBurnedRecord>(
-                      HealthDataConvertor.getDataType("calories"),
-                      TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
-                      dataOrigins,
-                      true,
-                      limit,
-                      null
-                      );
-                    double totalCalories = 0;
-                    ReadRecordsResponse<TotalCaloriesBurnedRecord> caloriesRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(caloriesRequest, continuation));
-                    for (TotalCaloriesBurnedRecord calories : caloriesRecord.getRecords()) {
-                      totalCalories += calories.getEnergy().getKilocalories();
-                    }
-                    data.put("calories", totalCalories);
-                  } catch (Exception e) {
-                    e.printStackTrace();
-                  }
-                }
-                resultSet.put(data);
+    try {
+      ReadRecordsResponse<Record> readResponse = BuildersKt.runBlocking(
+        EmptyCoroutineContext.INSTANCE,
+        (s, c) ->  healthClient.readRecords(readRecordsRequest, c)
+      );
+      List<androidx.health.connect.client.records.Record> records = readResponse.getRecords();
+      JSONArray resultSet = new JSONArray();
+      for (androidx.health.connect.client.records.Record record : records) {
+        JSONObject data = HealthDataConvertor.parseRecordForType(record, datatype, filtered);
+        if (data != null) {
+          if (datatype.equals("activity")) {
+            try {
+              ExerciseSessionRecord exerciseSessionRecord = (ExerciseSessionRecord) record;
+              ReadRecordsRequest<DistanceRecord> distanceRequest = new ReadRecordsRequest<DistanceRecord>(
+                HealthDataConvertor.getDataType("distance"),
+                TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
+                dataOrigins,
+                true,
+                limit,
+                null
+                );
+              double totalDistance = 0;
+              ReadRecordsResponse<DistanceRecord> distanceRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(distanceRequest, continuation));
+              for (DistanceRecord distance : distanceRecord.getRecords()) {
+                totalDistance += distance.getDistance().getMeters();
               }
+              data.put("distance", totalDistance);
+              ReadRecordsRequest<TotalCaloriesBurnedRecord> caloriesRequest = new ReadRecordsRequest<TotalCaloriesBurnedRecord>(
+                HealthDataConvertor.getDataType("calories"),
+                TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
+                dataOrigins,
+                true,
+                limit,
+                null
+                );
+              double totalCalories = 0;
+              ReadRecordsResponse<TotalCaloriesBurnedRecord> caloriesRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(caloriesRequest, continuation));
+              for (TotalCaloriesBurnedRecord calories : caloriesRecord.getRecords()) {
+                totalCalories += calories.getEnergy().getKilocalories();
+              }
+              data.put("calories", totalCalories);
+            } catch (Exception e) {
+              e.printStackTrace();
             }
-            callbackContext.success(resultSet);
           }
-        }});
+          resultSet.put(data);
+        }
+      }
+      callbackContext.success(resultSet);
+    } catch (Exception e) {
+      e.printStackTrace();
+      callbackContext.error(e.getMessage());
+    }
   }
 
   void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
@@ -430,25 +414,18 @@ public class HealthPlugin extends CordovaPlugin {
       dataOrigins
     );
 
-
-    healthClient.aggregate(aggregateRequest,
-      new Continuation<Object>() {
-        @NonNull
-        @Override
-        public CoroutineContext getContext() {
-          return EmptyCoroutineContext.INSTANCE;
-        }
-
-        @Override
-        public void resumeWith(@NonNull Object o) {
-          if (o instanceof AggregationResult) {
-            AggregationResult result = (AggregationResult) o;
-            JSONArray resultSet = new JSONArray();
-            resultSet.put(HealthDataConvertor.parseAggregationResultForType(result, datatype, filtered));
-            callbackContext.success(resultSet);
-          }
-        }});
-
+    try {
+        AggregationResult result = BuildersKt.runBlocking(
+          EmptyCoroutineContext.INSTANCE,
+          (s, c) ->  healthClient.aggregate(aggregateRequest, c)
+        );
+        JSONArray resultSet = new JSONArray();
+        resultSet.put(HealthDataConvertor.parseAggregationResultForType(result, datatype, filtered));
+        callbackContext.success(resultSet);
+      } catch (Exception e) {
+        e.printStackTrace();
+        callbackContext.error(e.getMessage());
+      }
   }
 
   void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
@@ -471,34 +448,29 @@ public class HealthPlugin extends CordovaPlugin {
         dataOrigins
       );
 
-      healthClient.aggregateGroupByDuration(aggregateRequest,
-        new Continuation<Object>() {
-          @NonNull
-          @Override
-          public CoroutineContext getContext() {
-            return EmptyCoroutineContext.INSTANCE;
+      try {
+        List<AggregationResultGroupedByDuration> results = BuildersKt.runBlocking(
+          EmptyCoroutineContext.INSTANCE,
+          (s, c) -> healthClient.aggregateGroupByDuration(aggregateRequest, c)
+        );
+          JSONArray resultSet = new JSONArray();
+          for (AggregationResultGroupedByDuration aggregationResultGroupedByDuration : results) {
+            JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
+            try {
+              obj.put("startDate", aggregationResultGroupedByDuration.getStartTime().toEpochMilli());
+              obj.put("endDate", aggregationResultGroupedByDuration.getEndTime().toEpochMilli());
+            } catch (JSONException e) {
+              e.printStackTrace();
+            }
+            resultSet.put(obj);
           }
 
-          @Override
-          public void resumeWith(@NonNull Object o) {
-            if (o instanceof List) {
-              List<AggregationResultGroupedByDuration> results = (List<AggregationResultGroupedByDuration>) o;
-              JSONArray resultSet = new JSONArray();
-              for (AggregationResultGroupedByDuration aggregationResultGroupedByDuration : results) {
-                JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
-                try {
-                  obj.put("startDate", aggregationResultGroupedByDuration.getStartTime().toEpochMilli());
-                  obj.put("endDate", aggregationResultGroupedByDuration.getEndTime().toEpochMilli());
-                } catch (JSONException e) {
-                  e.printStackTrace();
-                }
-                resultSet.put(obj);
-              }
-
-              callbackContext.success(resultSet);
-            }
-          }});
-
+          callbackContext.success(resultSet);
+        }
+        catch (Exception e) {
+          e.printStackTrace();
+          callbackContext.error(e.getMessage());
+        }
     } else if (bucketType.equalsIgnoreCase("day") || bucketType.equalsIgnoreCase("week") || bucketType.equalsIgnoreCase("month") || bucketType.equalsIgnoreCase("year")) {
       Period period = Period.ofDays(1);
       if (bucketType.equalsIgnoreCase("week")) {
@@ -519,33 +491,28 @@ public class HealthPlugin extends CordovaPlugin {
         dataOrigins
       );
 
-      healthClient.aggregateGroupByPeriod(aggregateRequest,
-        new Continuation<Object>() {
-          @NonNull
-          @Override
-          public CoroutineContext getContext() {
-            return EmptyCoroutineContext.INSTANCE;
+      try {
+        List<AggregationResultGroupedByPeriod> results = BuildersKt.runBlocking(
+          EmptyCoroutineContext.INSTANCE,
+          (s, c) -> healthClient.aggregateGroupByPeriod(aggregateRequest, c)
+        );
+        JSONArray resultSet = new JSONArray();
+        for (AggregationResultGroupedByPeriod aggregationResultGroupedByDuration : results) {
+          JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
+          try {
+            obj.put("startDate", aggregationResultGroupedByDuration.getStartTime());
+            obj.put("endDate", aggregationResultGroupedByDuration.getEndTime());
+          } catch (JSONException e) {
+            e.printStackTrace();
           }
+          resultSet.put(obj);
+        }
 
-          @Override
-          public void resumeWith(@NonNull Object o) {
-            if (o instanceof List) {
-              List<AggregationResultGroupedByPeriod> results = (List<AggregationResultGroupedByPeriod>) o;
-              JSONArray resultSet = new JSONArray();
-              for (AggregationResultGroupedByPeriod aggregationResultGroupedByDuration : results) {
-                JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
-                try {
-                  obj.put("startDate", aggregationResultGroupedByDuration.getStartTime());
-                  obj.put("endDate", aggregationResultGroupedByDuration.getEndTime());
-                } catch (JSONException e) {
-                  e.printStackTrace();
-                }
-                resultSet.put(obj);
-              }
-
-              callbackContext.success(resultSet);
-            }
-          }});
+        callbackContext.success(resultSet);
+      } catch (Exception e) {
+        e.printStackTrace();
+        callbackContext.error(e.getMessage());
+      }
     }
 
   }
@@ -665,23 +632,16 @@ public class HealthPlugin extends CordovaPlugin {
     }
     ArrayList<Record> records = new ArrayList<>();
     records.add(HealthDataConvertor.createRecord(datatype, value, sourceBundleId,st, et));
-    healthClient.insertRecords(records, new Continuation<InsertRecordsResponse>() {
-      @NonNull
-      @Override
-      public CoroutineContext getContext() {
-        return EmptyCoroutineContext.INSTANCE;
-      }
-
-      @Override
-      public void resumeWith(@NonNull Object o) {
-
-        if (o instanceof Result.Failure) {
-          callbackContext.error(((Result.Failure) o).exception.getMessage());
-        } else {
-          callbackContext.success();
-        }
-      }
-    });
+    try {
+      InsertRecordsResponse response = BuildersKt.runBlocking(
+        EmptyCoroutineContext.INSTANCE,
+        (s, c) -> healthClient.insertRecords(records, c)
+      );
+      callbackContext.success();
+    } catch (Exception e) {
+      e.printStackTrace();
+      callbackContext.error(e.getMessage());
+    }
   }
 
   // deletes data points in a given time window
@@ -710,21 +670,14 @@ public class HealthPlugin extends CordovaPlugin {
 
     Instant start = Instant.ofEpochMilli(st);
     Instant end = Instant.ofEpochMilli(et);
-    healthClient.deleteRecords(dt, TimeRangeFilter.between(start, end), new Continuation<Unit>() {
-      @NonNull
-      @Override
-      public CoroutineContext getContext() {
-        return EmptyCoroutineContext.INSTANCE;
-      }
-
-      @Override
-      public void resumeWith(@NonNull Object o) {
-        if (o instanceof Result.Failure) {
-          callbackContext.error(((Result.Failure) o).exception.getMessage());
-        } else {
-          callbackContext.success();
-      }
-      }
-    });
+    try {
+      BuildersKt.runBlocking(
+        EmptyCoroutineContext.INSTANCE,
+        (s, c) -> healthClient.deleteRecords(dt, TimeRangeFilter.between(start, end), c));
+      callbackContext.success();
+    } catch (Exception e) {
+      e.printStackTrace();
+      callbackContext.error(e.getMessage());
+    }
   }
 }

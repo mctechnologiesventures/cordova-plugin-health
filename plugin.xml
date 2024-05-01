@@ -45,13 +45,13 @@
     </config-file>
 
     <config-file target="res/xml/config.xml" parent="/*">
-      <feature name="health">
-        <param name="android-package" value="org.apache.cordova.health.HealthPlugin" />
+      <feature name="whealth">
+        <param name="android-package" value="org.apache.cordova.whealth.HealthPlugin" />
       </feature>
       <access origin="https://accounts.google.com/*" />
     </config-file>
 
-    <source-file src="src/android/HealthPlugin.java" target-dir="src/org/apache/cordova/health/" />
+    <source-file src="src/android/HealthPlugin.java" target-dir="src/org/apache/cordova/whealth/" />
 
     <js-module src="www/android/whealth.js" name="whealth">
       <clobbers target="navigator.whealth" />

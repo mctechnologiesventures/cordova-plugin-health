@@ -1,8 +1,8 @@
 {
   "version": "2.1.0",
-  "name": "cordova-plugin-health",
+  "name": "cordova-plugin-whealth",
   "cordova_name": "Health",
-  "description": "A plugin that abstracts fitness and health repositories like Apple HealthKit or Google Fit",
+  "description": "A plugin that abstracts fitness and health repositories like Google Fit",
   "license": "MIT",
   "author": "Dario Salvi",
   "homepage": "https://github.com/dariosalvi78/cordova-plugin-health",
@@ -16,14 +16,12 @@
   },
   "issue": "https://github.com/dariosalvi78/cordova-plugin-health/issues",
   "keywords": [
-    "HealthKit",
     "Google Fit",
     "health",
     "fitness",
     "ecosystem:cordova"
   ],
   "platforms": [
-    "ios",
     "android"
   ],
   "engines": [

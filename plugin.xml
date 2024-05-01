@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
-  id="cordova-plugin-health"
+  id="cordova-plugin-whealth"
   version="2.1.0">
 
-  <name>Cordova Health</name>
+  <name>Cordova Google Play</name>
 
   <description>
-    A plugin that abstracts fitness and health repositories like Apple HealthKit or Google Fit
+    A plugin that abstracts fitness and health repositories for android Google Fit
   </description>
 
   <author>Dario Salvi, based on code by Eddy Verbruggen / Telerik and Carmelo Velardo</author>
@@ -53,8 +53,8 @@
 
     <source-file src="src/android/HealthPlugin.java" target-dir="src/org/apache/cordova/health/" />
 
-    <js-module src="www/android/health.js" name="health">
-      <clobbers target="navigator.health" />
+    <js-module src="www/android/whealth.js" name="whealth">
+      <clobbers target="navigator.whealth" />
     </js-module>
   </platform>
 

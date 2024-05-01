@@ -1,4 +1,4 @@
-package org.apache.cordova.health;
+package org.apache.cordova.whealth;
 
 import android.Manifest;
 import android.app.Activity;
@@ -57,7 +57,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class HealthPlugin extends CordovaPlugin {
   // logger tag
-  private static final String TAG = "cordova-plugin-health";
+  private static final String TAG = "cordova-plugin-whealth";
 
   // calling activity
   private CordovaInterface cordova;

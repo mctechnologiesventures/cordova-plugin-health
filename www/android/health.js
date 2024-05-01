@@ -1,221 +1,160 @@
 var exec = require("cordova/exec");
 
-var Health = function () {
-  this.name = "health";
-};
 
-Health.prototype.isAvailable = function (onSuccess, onError) {
-  exec(onSuccess, onError, "health", "isAvailable", []);
-};
+module.exports = {
 
-Health.prototype.disconnect = function (onSuccess, onError) {
-  exec(onSuccess, onError, "health", "disconnect", []);
-};
+  name: "Health",
 
-Health.prototype.promptInstallFit = function (onSuccess, onError) {
-  exec(onSuccess, onError, "health", "promptInstallFit", []);
-};
+  isAvailable (onSuccess, onError) {
+    exec(onSuccess, onError, "health", "isAvailable", []);
+  },
 
-Health.prototype.requestAuthorization = function (datatypes, onSuccess, onError) {
-  if (!Array.isArray(datatypes)) {
-    onError('data types must be array');
-  } else {
-    exec(onSuccess, onError, "health", "requestAuthorization", datatypes);
-  }
-};
+  getHealthConnectFromStore (onSuccess, onError) {
+    exec(onSuccess, onError, "health", "getHealthConnectFromStore", []);
+  },
 
-Health.prototype.isAuthorized = function (datatypes, onSuccess, onError) {
-  exec(onSuccess, onError, "health", "isAuthorized", datatypes);
-};
+  launchPrivacyPolicy (onSuccess, onError) {
+    exec(onSuccess, onError, "health", "launchPrivacyPolicy", [])
+  },
 
-Health.prototype.query = function (opts, onSuccess, onError) {
-  //calories.active is done by asking all calories and subtracting the basal
-  if (opts.dataType == 'calories.active') {
-    //get basal average in the time window between endDate and BASAL_CALORIES_QUERY_PERIOD
-    navigator.health.queryAggregated({
-      dataType: 'calories.basal',
-      endDate: opts.endDate,
-      startDate: opts.startDate,
-      bucket: opts.bucket
-    }, function (data) {
-      var basal_ms = data.value / (opts.endDate - opts.startDate);
-      //now get the total
-      opts.dataType = 'calories';
-      navigator.health.query(opts, function (data) {
-        //and subtract the basal
-        for (var i = 0; i < data.length; i++) {
-          data[i].value -= basal_ms * (data[i].endDate.getTime() - data[i].startDate.getTime());
+  openHealthSettings (onSuccess, onError) {
+    exec(onSuccess, onError, "health", "openHealthSettings", [])
+  },
 
-          //although it shouldn't happen, after subtracting, sometimes the values are negative,
-          //in that case let's return 0 (negative values don't make sense)
-          if (data[i].value < 0) data[i].value = 0;
-        }
-        onSuccess(data);
-      }, onError);
-    }, onError);
-  } else {
-    //standard case, just use the name as it is
+  isAuthorized (authObj, onSuccess, onError) {
+    exec(onSuccess, onError, "health", "isAuthorized", [authObj])
+  },
+
+  requestAuthorization (authObj, onSuccess, onError) {
+    exec(onSuccess, onError, "health", "requestAuthorization", [authObj])
+  },
+
+  query (opts, onSuccess, onError) {
     if (opts.startDate && (typeof opts.startDate == 'object'))
-      opts.startDate = opts.startDate.getTime();
+      opts.startDate = opts.startDate.getTime()
     if (opts.endDate && (typeof opts.endDate == 'object'))
       opts.endDate = opts.endDate.getTime();
-    exec(function (data) {
-      for (var i = 0; i < data.length; i++) {
-        data[i].startDate = new Date(data[i].startDate);
-        data[i].endDate = new Date(data[i].endDate);
-      }
-      // if nutrition, add water
-      if (opts.dataType == 'nutrition') {
-        opts.dataType = 'nutrition.water';
-        navigator.health.query(opts, function (water) {
-          // merge and sort
-          for (var i = 0; i < water.length; i++) {
-            water[i].value = { item: "water", nutrients: { "nutrition.water": water[i].value } };
-            water[i].unit = "nutrition";
-          }
-          data.concat(water);
-          data = data.concat(water);
-          data.sort(function (a, b) {
-            return a.startDate - b.startDate;
-          })
+    exec((data) => {
+      // here we use a recursive function instead of a simple loop
+      // this is to deal with additional queries required for the special case
+      // of activity with calories and/or distance
+      finalizeResult = (i) => {
+        if (i >= data.length) {
+          // completed, return results
           onSuccess(data);
-        }, onError)
-      } else {
-        onSuccess(data);
-      }
-    }, onError, "health", "query", [opts]);
-  }
-};
+        } else {
+          // iterate
+          // convert timestamps to date
+          if (data[i].startDate) data[i].startDate = new Date(data[i].startDate)
+          if (data[i].endDate) data[i].endDate = new Date(data[i].endDate)
 
-Health.prototype.queryAggregated = function (opts, onSuccess, onError) {
-  if (opts.dataType == 'calories.active') {
-    //get basal average
-    navigator.health.queryAggregated({
-      dataType: 'calories.basal',
-      endDate: opts.endDate,
-      startDate: opts.startDate
-    }, function (data) {
-      var basal_ms = data.value / (opts.endDate - opts.startDate);
-      //now get the total
-      opts.dataType = 'calories';
-      navigator.health.queryAggregated(opts, function (retval) {
-        //and remove the basal
-        retval.value -= basal_ms * (retval.endDate.getTime() - retval.startDate.getTime());
-        //although it shouldn't happen....
-        if (retval.value < 0) retval.value = 0;
-        onSuccess(retval);
-      }, onError);
-    }, onError);
-  } else {
-    if (typeof opts.startDate == 'object') opts.startDate = opts.startDate.getTime();
-    if (typeof opts.endDate == 'object') opts.endDate = opts.endDate.getTime();
-    exec(function (data) {
+          if (opts.dataType == 'sleep' && opts.sleepSession) {
+            // convert start and end dates for single stages
+            for (let stageI = 0; stageI < data[i].value.length; stageI++) {
+              data[i].value[stageI].startDate = new Date(data[i].value[stageI].startDate)
+              data[i].value[stageI].endDate = new Date(data[i].value[stageI].endDate)
+            }
+          }
+
+          if (opts.dataType == 'activity' && (opts.includeCalories || opts.includeDistance)) {
+            // we need to also fetch calories and/or distance
+
+            // helper function to get aggregated calories for that activity
+            getCals = (onDone) => {
+              this.queryAggregated({
+                startDate: data[i].startDate,
+                endDate: data[i].endDate,
+                dataType: 'calories.active'
+              }, (cals) => {
+                data[i].calories = cals.value
+                onDone()
+              }, onError)
+            }
+            // helper function to get aggregated distance for that activity
+            getDist = (onDone) => {
+              this.queryAggregated({
+                startDate: data[i].startDate,
+                endDate: data[i].endDate,
+                dataType: 'distance'
+              }, (dist) => {
+                data[i].distance = dist.value
+                onDone()
+              }, onError)
+            }
+
+            if (opts.includeCalories) {
+              // calories are needed, fetch them
+              getCals(() => {
+                // now get the distance, if needed
+                if (opts.includeDistance) {
+                  getDist(() => {
+                    finalizeResult(i + 1)
+                  })
+                } else {
+                  // no distance needed, move on
+                  finalizeResult(i + 1)
+                }
+              })
+            } else {
+              // distance only is needed
+              getDist(() => {
+                finalizeResult(i + 1)
+              })
+            }
+          } else {
+            finalizeResult(i + 1)
+          }
+        }
+      }
+      finalizeResult(0);
+    }, onError, "health", "query", [opts])
+  },
+
+  queryAggregated (opts, onSuccess, onError) {
+    if (typeof opts.startDate == 'object') opts.startDate = opts.startDate.getTime()
+    if (typeof opts.endDate == 'object') opts.endDate = opts.endDate.getTime()
+    exec((data) => {
       //reconvert the dates back to Date objects
       if (Object.prototype.toString.call(data) === '[object Array]') {
-        //it's an array
+        //it's an array, iterate through each item
         for (var i = 0; i < data.length; i++) {
-          data[i].startDate = new Date(data[i].startDate);
-          data[i].endDate = new Date(data[i].endDate);
+          data[i].startDate = new Date(data[i].startDate)
+          data[i].endDate = new Date(data[i].endDate)
         }
-      } else {
-        data.startDate = new Date(data.startDate);
-        data.endDate = new Date(data.endDate);
+      } else { // not an array
+        data.startDate = new Date(data.startDate)
+        data.endDate = new Date(data.endDate)
       }
 
-      // if nutrition, add water
-      if (opts.dataType == 'nutrition') {
-        opts.dataType = 'nutrition.water';
-        navigator.health.queryAggregated(opts, function (water) {
-          data.value['nutrition.water'] = water.value;
-          onSuccess(data);
-        }, onError)
-      } else {
-        onSuccess(data);
+      onSuccess(data)
+    }, onError, 'health', 'queryAggregated', [opts])
+  },
+
+  store (data, onSuccess, onError) {
+    if (data.startDate && (typeof data.startDate == 'object'))
+      data.startDate = data.startDate.getTime()
+    if (data.endDate && (typeof data.endDate == 'object'))
+      data.endDate = data.endDate.getTime()
+
+    if (data.dataType == 'sleep' && data.sleepSession) {
+      // convert start and end dates for single stages
+      for (let stageI = 0; stageI < data.value.length; stageI++) {
+        if (data.value[stageI].startDate && (typeof data.value[stageI].startDate == 'object'))
+          data.value[stageI].startDate = data.value[stageI].startDate.getTime()
+
+        if (data.value[stageI].endDate && (typeof data.value[stageI].endDate == 'object'))
+          data.value[stageI].endDate = data.value[stageI].endDate.getTime()
       }
-    }, onError, 'health', 'queryAggregated', [opts]);
-  }
-};
-
-Health.prototype.store = function (data, onSuccess, onError) {
-  if (data.dataType == 'calories.basal') {
-    onError('basal calories cannot be stored in Android');
-    return;
-  }
-  if (data.dataType == 'calories.active') {
-    //rename active calories to total calories
-    data.dataType = 'calories';
-  }
-  if (data.startDate && (typeof data.startDate == 'object'))
-    data.startDate = data.startDate.getTime();
-  if (data.endDate && (typeof data.endDate == 'object'))
-    data.endDate = data.endDate.getTime();
-  if (data.dataType == 'activity') {
-    data.value = navigator.health.toFitActivity(data.value);
-  }
-  exec(onSuccess, onError, "health", "store", [data]);
-};
-
-Health.prototype.delete = function (data, onSuccess, onError) {
-  if (data.dataType == 'calories.basal') {
-    onError('basal calories cannot be deleted in Android');
-    return;
-  }
-  if (data.dataType == 'calories.active') {
-    //rename active calories to total calories
-    data.dataType = 'calories';
-  }
-  if (data.startDate && (typeof data.startDate == 'object'))
-    data.startDate = data.startDate.getTime();
-  if (data.endDate && (typeof data.endDate == 'object'))
-    data.endDate = data.endDate.getTime();
-  if (data.dataType == 'activity') {
-    data.value = navigator.health.toFitActivity(data.value);
-  }
-  exec(onSuccess, onError, "health", "delete", [data]);
-};
-
-Health.prototype.toFitActivity = function (act) {
-  const acts = {
-    supported: {
-      core_training: 'strength_training',
-      flexibility: 'gymnastics',
-      stairs: 'stair_climbing',
-      'wheelchair.walkpace': 'wheelchair',
-      'wheelchair.runpace': 'wheelchair',
-      'sleep.inBed': 'sleep.awake'
-    },
-    unsupported: {
-      archery: 1,
-      barre: 1,
-      bowling: 1,
-      fishing: 1,
-      functional_strength: 1,
-      hunting: 1,
-      lacrosse: 1,
-      mixed_metabolic_cardio: 1,
-      paddle_sports: 1,
-      play: 1,
-      preparation_and_recovery: 1,
-      snow_sports: 1,
-      softball: 1,
-      water_fitness: 1,
-      water_sports: 1,
-      wrestling: 1
     }
-  };
-  var activity = acts.supported[act];
-  if (!activity) {
-    activity = acts.unsupported[act];
-    if (activity) {
-      activity = 'other'
-    } else {
-      activity = act
-    }
-  }
-  return activity
-};
 
-cordova.addConstructor(function () {
-  navigator.health = new Health();
-  return navigator.health;
-});
+    exec(onSuccess, onError, "health", "store", [data])
+  },
+
+  delete (data, onSuccess, onError) {
+    if (data.startDate && (typeof data.startDate == 'object'))
+      data.startDate = data.startDate.getTime()
+    if (data.endDate && (typeof data.endDate == 'object'))
+      data.endDate = data.endDate.getTime()
+    exec(onSuccess, onError, "health", "delete", [data]);
+  }
+}

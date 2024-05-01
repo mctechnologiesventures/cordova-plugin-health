@@ -1,18 +1,18 @@
-function HealthKit() {
+function HealthKit () {
 }
 
-var matches = function(object, typeOrClass) {
+var matches = function (object, typeOrClass) {
   return (typeof typeOrClass === 'string') ?
     typeof object === typeOrClass : object instanceof typeOrClass;
 };
 
-var rounds = function(object, prop) {
+var rounds = function (object, prop) {
   var val = object[prop];
   if (!matches(val, Date)) return;
   object[prop] = Math.round(val.getTime() / 1000);
 };
 
-var hasValidDates = function(object) {
+var hasValidDates = function (object) {
   if (!matches(object.startDate, Date)) {
     throw new TypeError("startDate must be a JavaScript Date Object");
   }
@@ -24,8 +24,8 @@ var hasValidDates = function(object) {
   return object;
 };
 
-var getChecker = function(options) {
-  return function paramChecker(type) {
+var getChecker = function (options) {
+  return function paramChecker (type) {
     var value = options[type];
     if (type === 'startDate' || type === 'endDate') {
       if (!matches(value, Date)) throw new TypeError(type + ' must be a JavaScript Date');
@@ -42,7 +42,7 @@ var getChecker = function(options) {
 // define('type', fn);
 // define('type', obj);
 // define('type', obj, fn)
-var define = function(methodName, params, fn) {
+var define = function (methodName, params, fn) {
   if (params == null) params = {};
   if (typeof params === 'function') {
     fn = params;
@@ -55,11 +55,11 @@ var define = function(methodName, params, fn) {
   if (!Array.isArray(checks)) checks = [checks];
 
   if (isEmpty) {
-    HealthKit.prototype[methodName] = function(callback, onError) {
+    HealthKit.prototype[methodName] = function (callback, onError) {
       cordova.exec(callback, onError, 'HealthKit', methodName, []);
     };
   } else {
-    HealthKit.prototype[methodName] = function(options, callback, onError) {
+    HealthKit.prototype[methodName] = function (options, callback, onError) {
       if (!options) options = {};
       try {
         checks.forEach(getChecker(options));
@@ -74,29 +74,29 @@ var define = function(methodName, params, fn) {
   };
 };
 
-define('available', {noArgs: true});
+define('available', { noArgs: true });
 define('checkAuthStatus');
 define('requestAuthorization');
-define('readDateOfBirth', {noArgs: true});
-define('readGender', {noArgs: true});
-define('readFitzpatrickSkinType', {noArgs: true});
+define('readDateOfBirth', { noArgs: true });
+define('readGender', { noArgs: true });
+define('readFitzpatrickSkinType', { noArgs: true });
 define('findWorkouts');
 define('delete');
 define('readWeight');
 define('readHeight');
-define('readBloodType', {noArgs: true});
+define('readBloodType', { noArgs: true });
 
-define('saveWeight', function(options) {
+define('saveWeight', function (options) {
   if (options.date == null) options.date = new Date();
   if (typeof options.date === 'object') rounds(options, 'date');
 });
 
-define('saveHeight', function(options) {
+define('saveHeight', function (options) {
   if (options.date == null) options.date = new Date();
   if (typeof options.date === 'object') rounds(options, 'date');
 });
 
-define('saveWorkout', {required: 'startDate'}, function(options) {
+define('saveWorkout', { required: 'startDate' }, function (options) {
   var hasEnd = matches(options.endDate, Date);
   var hasDuration = options.duration && options.duration > 0;
   rounds(options, 'startDate');
@@ -107,24 +107,27 @@ define('saveWorkout', {required: 'startDate'}, function(options) {
   if (hasEnd) rounds(options, 'endDate');
 });
 
-define('monitorSampleType', {required: 'sampleType'});
-define('querySampleType', {required: 'sampleType'}, hasValidDates);
+define('monitorSampleType', { required: 'sampleType' });
+define('querySampleType', { required: 'sampleType' }, hasValidDates);
 
-define('querySampleTypeAggregated', {required: 'sampleType'}, hasValidDates);
+define('querySampleTypeAggregated', { required: 'sampleType' }, hasValidDates);
 
-define('deleteSamples', {required: 'sampleType'}, hasValidDates);
+define('deleteSamples', { required: 'sampleType' }, hasValidDates);
 
-define('queryCorrelationType', {required: 'correlationType'}, hasValidDates);
-define('saveSample', {required: 'sampleType'}, hasValidDates);
+define('queryCorrelationType', { required: 'correlationType' }, hasValidDates);
+define('saveSample', { required: 'sampleType' }, hasValidDates);
 
-define('saveCorrelation', {required: ['correlationType', 'samples']}, function(options) {
+define('saveCorrelation', { required: ['correlationType', 'samples'] }, function (options) {
   hasValidDates(options);
   options.objects = options.samples.map(hasValidDates);
 });
 
-define('sumQuantityType', {required: ['sampleType']}, hasValidDates);
+define('sumQuantityType', { required: ['sampleType'] }, hasValidDates);
 
-HealthKit.install = function() {
+define('openHealthSettings', { noArgs: true });
+
+
+HealthKit.install = function () {
   if (!window.plugins) window.plugins = {};
   window.plugins.healthkit = new HealthKit();
   return window.plugins.healthkit;

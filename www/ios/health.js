@@ -1,5 +1,3 @@
-var exec = require('cordova/exec');
-
 var Health = function () {
   this.name = 'health';
 };
@@ -106,6 +104,11 @@ Health.prototype.isAvailable = function (success, error) {
   window.plugins.healthkit.available(success, error);
 };
 
+
+Health.prototype.openHealthSettings = function (success, error) {
+  window.plugins.healthkit.openHealthSettings(success, error);
+};
+
 // returns the equivalent native HealthKit data type from the custom one
 var getHKDataTypes = function (dtArr) {
   var HKDataTypes = [];
@@ -135,36 +138,23 @@ var getHKDataTypes = function (dtArr) {
 var getReadWriteTypes = function (dts, success, error) {
   let readTypes = [];
   let writeTypes = [];
-  for (var i = 0; i < dts.length; i++) {
-    let HKDataTypes = [];
-    if (typeof dts[i] === 'string') {
-      HKDataTypes = getHKDataTypes([dts[i]]);
-      if (Array.isArray(HKDataTypes)) {
-        readTypes = readTypes.concat(HKDataTypes);
-        writeTypes = writeTypes.concat(HKDataTypes);
-      } else {
-        error('unknown data type - ' + HKDataTypes);
-        return;
-      }
+  let HKDataTypes = [];
+  if (dts.read) {
+    HKDataTypes = getHKDataTypes(dts.read);
+    if (Array.isArray(HKDataTypes)) {
+      readTypes = readTypes.concat(HKDataTypes);
     } else {
-      if (dts[i]['read']) {
-        HKDataTypes = getHKDataTypes(dts[i]['read']);
-        if (Array.isArray(HKDataTypes)) {
-          readTypes = readTypes.concat(HKDataTypes);
-        } else {
-          error('unknown read data type - ' + HKDataTypes);
-          return;
-        }
-      }
-      if (dts[i]['write']) {
-        HKDataTypes = getHKDataTypes(dts[i]['write']);
-        if (Array.isArray(HKDataTypes)) {
-          writeTypes = writeTypes.concat(HKDataTypes);
-        } else {
-          error('unknown write data type - ' + HKDataTypes);
-          return;
-        }
-      }
+      error('unknown read data type - ' + HKDataTypes);
+      return;
+    }
+  }
+  if (dts.write) {
+    HKDataTypes = getHKDataTypes(dts.write);
+    if (Array.isArray(HKDataTypes)) {
+      writeTypes = writeTypes.concat(HKDataTypes);
+    } else {
+      error('unknown write data type - ' + HKDataTypes);
+      return;
     }
   }
   success(dedupe(readTypes), dedupe(writeTypes));
@@ -326,7 +316,7 @@ Health.prototype.query = function (opts, onSuccess, onError) {
                 res.value = 'sleep.rem';
                 break;
             }
-            res.unit = 'sleepType';
+            res.unit = 'sleep';
           } else {
             res.value = samples[i].quantity;
           }
@@ -366,6 +356,7 @@ Health.prototype.queryAggregated = function (opts, onSuccess, onError) {
   if ((opts.dataType !== 'steps') && (opts.dataType !== 'distance') &&
     (opts.dataType !== 'calories') && (opts.dataType !== 'calories.active') &&
     (opts.dataType !== 'calories.basal') && (opts.dataType !== 'activity') &&
+    (opts.dataType !== 'heart_rate') &&
     (!opts.dataType.startsWith('nutrition')) && (opts.dataType !== 'appleExerciseTime')) {
     // unsupported datatype
     onError('Datatype ' + opts.dataType + ' not supported in queryAggregated');
@@ -380,12 +371,12 @@ Health.prototype.queryAggregated = function (opts, onSuccess, onError) {
     opts.aggregation = opts.bucket;
     if (opts.dataType === 'activity') {
       // query and manually aggregate
-      navigator.health.query(opts, function (data) {
+      cordova.plugins.health.query(opts, function (data) {
         onSuccess(bucketize(data, opts.bucket, startD, endD, 'activitySummary', mergeActivitySamples));
       }, onError);
     } else if (opts.dataType === 'nutrition') {
       // query and manually aggregate
-      navigator.health.query(opts, function (data) {
+      cordova.plugins.health.query(opts, function (data) {
         onSuccess(bucketize(data, opts.bucket, startD, endD, 'nutrition', mergeNutritionSamples));
       }, onError);
     } else {
@@ -417,13 +408,13 @@ Health.prototype.queryAggregated = function (opts, onSuccess, onError) {
   } else {
     // ---- no bucketing, just sum
     if (opts.dataType === 'activity') {
-      navigator.health.query(opts, function (data) {
+      cordova.plugins.health.query(opts, function (data) {
         // manually aggregate by activity
         onSuccess(aggregateIntoResult(data, 'activitySummary', mergeActivitySamples));
       }, onError);
     } else if (opts.dataType === 'nutrition') {
       // manually aggregate by nutrition
-      navigator.health.query(opts, function (data) {
+      cordova.plugins.health.query(opts, function (data) {
         onSuccess(aggregateIntoResult(data, 'nutrition', mergeNutritionSamples));
       }, onError);
     } else {
@@ -608,8 +599,8 @@ Health.prototype.delete = function (data, onSuccess, onError) {
 };
 
 cordova.addConstructor(function () {
-  navigator.health = new Health();
-  return navigator.health;
+  cordova.plugins.health = new Health();
+  return cordova.plugins.health;
 });
 
 

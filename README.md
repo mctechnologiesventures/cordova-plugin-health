@@ -1,20 +1,23 @@
 # Cordova Health Plugin
 
+![cordova-plugin-health](https://badgers.space/badge/npm/cordova-plugin-health/cyan) 
+![MIT license](https://badgers.space/badge/license/mit/cyan)  
 
-A plugin that abstracts fitness and health repositories like Apple HealthKit or Google Fit.
 
-This work is based on [cordova plugin googlefit](https://github.com/2dvisio/cordova-plugin-googlefit) and on [cordova healthkit plugin](https://github.com/Telerik-Verified-Plugins/HealthKit)
+A plugin that abstracts fitness and health repositories like Apple HealthKit or Google Health Connect.
 
-For an introduction about Google Fit versus HealthKit see [this very good article](https://yalantis.com/blog/how-can-healthkit-and-googlefit-help-you-develop-healthcare-and-fitness-apps/).
+This work is based on [cordova healthkit plugin](https://github.com/Telerik-Verified-Plugins/HealthKit). This plugin is kept up to date and requires a recent version of cordova (12 and on) as well as recent iOS and Android SDKs.
+For bugs and improvements use the [issues tracker](https://github.com/dariosalvi78/cordova-plugin-health/issues).
+For general question or small issue, please use the [gitter channel](https://gitter.im/cordova-plugin-health/Lobby).
 
-This plugin is kept up to date and requires a recent version of cordova (6 and on) as well as recent iOS and Android SDKs.
+## Warning about the new version (3+)
 
-If you have any question or small issue, please use the [gitter channel](https://gitter.im/cordova-plugin-health/Lobby).
+This is a complete rewrite of the Android version of the plugin to support the new [HealthConnect API](https://developer.android.com/health-and-fitness/guides/health-connect). Google Fit APIs are deprecated and [will be made obsolete in 2024](https://developer.android.com/health-and-fitness/guides/health-connect/migrate/comparison-guide#turn-down-fit-android).
 
-## Warning
+Google Fit is no longer supported by this plugin. If, for any masochistic reason, you want to use Google Fit, you need to use an older version of this pluign (2.1.1).
 
-Google is rolling out a new, stricter, policy for using their Fitness API. Read about it [here](https://developers.google.com/fit/policy).
-The API has also introduced [new ways for retrieving heart rate and sleep](https://developers.google.com/fit/android/releases#october_19_2020), but these have not been implemented yet in this plugin (help is appreciated!).
+Please be remindful that ***THIS IS STILL A WORK-IN-PROGRESS***. While all functionalities listed here are implemented and working, there are several data types that were supported in older versions and are not supported in this version *YET*.
+If you need support for a given data type, please check if it is already implemented in iOS, then either add support in Java and send a pull request, or add an issue and I will prioritize it.
 
 ## Installation
 
@@ -26,48 +29,6 @@ cordova plugin add cordova-plugin-health --variable HEALTH_READ_PERMISSION='App 
 
 `HEALTH_READ_PERMISSION` and `HEALTH_WRITE_PERMISSION` are shown when the app tries to grant access to data in HealthKit.
 
-`FIT_API_VERSION` and `PLAY_AUTH_VERSION` allow you to override the google services version.
-
-Phonegap Build `config.xml`:
-
-```
-<!-- Health plugin -->
-<plugin name="cordova-plugin-health" source="npm">
-  <variable name="HEALTH_READ_PERMISSION" value="App needs read access"/>
-  <variable name="HEALTH_WRITE_PERMISSION" value="App needs write access"/>
-  <variable name="PLAY_AUTH_VERSION" value="19.0.0"/>
-  <variable name="FIT_API_VERSION" value="20.0.0"/>
-</plugin>
-
-<!-- Only if iOS -->
-
-<!-- Read access -->
-<config-file platform="ios" parent="NSHealthShareUsageDescription">
-  <string>App needs read access</string>
-</config-file>
-<!-- Write access -->
-<config-file platform="ios" parent="NSHealthUpdateUsageDescription">
-  <string>App needs write access</string>
-</config-file>
-```
-
-If, for some reason, the Info.plist loses the HEALTH_READ_PERMISSION and HEALTH_WRITE_PERMISSION, you probably need to add the following to your project's package.json:
-
-```
-{
-  "cordova": {
-    "plugins": {
-     "cordova-plugin-health": {
-        "HEALTH_READ_PERMISSION": "App needs read access",
-        "HEALTH_WRITE_PERMISSION": "App needs write access"
-      },
-    },
-  }
-}
-```
-
-This is known to happen when using the Ionic Package cloud service.
-
 ## iOS requirements
 
 * Make sure your app id has the 'HealthKit' entitlement when this plugin is installed (see iOS dev center).
@@ -76,217 +37,268 @@ This is known to happen when using the Ionic Package cloud service.
 
 ## Android requirements
 
-* Google has launched a [verification process](https://support.google.com/cloud/answer/9110914) for the app. This is needed for all the data types in Google Fit. Check [their guidelines](https://developers.google.com/terms/api-services-user-data-policy).
-* If you haven't configured the APIs correctly, particularly the OAuth requirements, you are likely to get 'User cancelled the dialog' as an error message. This often happens if you mismatch the signing certificate and SHA-1 fingerprint.
-* You need to have the Google Services API downloaded in your SDK.
-* Be sure to give your app access to the Google Fitness API, see [this](https://developers.google.com/fit/android/get-api-key).
-* If you are wondering what key your compiled app is using, you can type `keytool -list -printcert -jarfile yourapp.apk`.
-* You will need to add permissions in AndroidManifest.xml via config.xml depending on the data types you are requesting. See [this issue](https://github.com/dariosalvi78/cordova-plugin-health/issues/178#issuecomment-645937435) for an example
-* You can use the Google Fitness API even if the user doesn't have Google Fit installed, but there has to be some other fitness app putting data into the Fitness API otherwise your queries will always be empty. See the [the original documentation](https://developers.google.com/fit/overview).
-* You can change which Google Play Services Fitness API version this plugin uses by setting the `FIT_API_VERSION` variable in `config.xml` and the version of the Auth API using `PLAY_AUTH_VERSION`. By default it will use version `20.0.0` for play-services-fitness and version `19.0.0` for play-services-auth (see [release notes](https://developers.google.com/android/guides/releases#october_19_2020)). From version 15 of the Play Services [you don't have to use the same version](https://developers.google.com/android/guides/versioning) accross all your cordova plugins. You can track google services releases [here](https://developers.google.com/android/guides/releases).
-* This plugin uses AndroidX. You will need to [activate AndroidX](https://cordova.apache.org/announcements/2020/06/29/cordova-android-9.0.0.html) in the Android platform and make sure all other plugins you use are AndroidX compatible.
+* HealthConnect is made standard on (Google versions of) Android [from version 14 (API level 34)](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-1). On older versions of Android, the user has to install the Health Connect app from the Play Store.
+* Health Connect SDK supports Android 8 (API level 26) or higher, while the Health Connect app is only compatible with Android 9 (API level 28) or higher see [this](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-2).
+* Health Connect SDK requires targeting Android API level 34. The current cordova-android package (12.0.1) targets version 33 and uses a version of Gradle that is incompatible with API level 34, so you need to fix the versions of gradle (to 8.4), gradle plugin (to 8.1.1), target SDK version (to 34) and minimum SDK version (to 26). Add the following to the config.xml of your cordova app project:
+```xml
+<platform name="android">
+  ...
+  <preference name="GradleVersion" value="8.4" />
+  <preference name="AndroidGradlePluginVersion" value="8.1.1" />
+  <preference name="android-minSdkVersion" value="26" />
+  <preference name="android-targetSdkVersion" value="34" />
+  ...
+<platform>
+```
+Additionally, there are issues with some kotlin depenendencies which are fixed automatically by the plugin in `src/android/build-extras.gradle`. All these hacks will hopefully be removed with future versions of the cordova-android platform.
+* Download a recent version of gradle (8.4 or later).
+* If you use Android Studio, download at least version Hedgehog.
+* Be aware that Health Connect requires the user to have screen lock enabled with a PIN, pattern, or password.
+* When publishing the app, you need to comply to [these requests from Google](https://developer.android.com/health-and-fitness/guides/health-connect/publish/request-access).
+* This plugin uses AndroidX. You may need to [activate AndroidX](https://cordova.apache.org/announcements/2020/06/29/cordova-android-9.0.0.html) in the Android platform and make sure all other plugins you use are AndroidX compatible.
+
+### Permissions in AndroidManifest.xml
+
+Health Connect requires that each data type accessed is listed as permission in the AndroidManifest.xml file. This plugin will *NOT ADD PERMISSIONS* for the data types that you need, the list is too long to add them all and having all permissions listed may be problematic when submitting to the Play Store. **You need to modify the AndroidManifest.xml file and add the needed permissions manually**. See [this](https://developer.android.com/health-and-fitness/guides/health-connect/plan/data-types) to understand which permissions you need, depending on the data types that you actually want to access.
+The best way to add permissions is to include them in the [config.xml](https://cordova.apache.org/docs/en/latest/plugin_ref/spec.html#edit-config) file of your cordova project so that the build process is reproducible and the permissions are not lost when removing and re-adding the Android platform. Example:
+
+```xml
+<platform name="android">
+    ...
+    <config-file target="AndroidManifest.xml" parent="/*" xmlns:android="http://schemas.android.com/apk/res/android">
+        <uses-permission android:name="android.permission.health.READ_STEPS" />
+        <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+        <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+        ...
+    </config-file>
+    ...
+</platform>
+```
+
+
+### Mandatory Privacy Policy on Android
+
+A Privacy Policy must be present on Android in order for the app to be approved for distribution. The plugin includes a simple webview, with no JS activated, to show the Privacy Policy when requested. The Privacy Policy must be formatted as an HTML page (no JS) and placed as a file with name: `privacypolicy.html` under the `www` folder of the project (in other words, the webview loads the following URL: `file:///android_asset/www/privacypolicy.html`). It is possible to change that URL by changing the value inside the file `platforms/android/app/src/main/res/values/CordovaPluginHealthStrings.xml`. WARNING: I suspect that this file may get reset sometimes to its original value. There should be a way to modify it from config.xml using [edit-config](https://cordova.apache.org/docs/en/12.x/plugin_ref/spec.html#edit-config) but I was not able to make it work. Help is welcome.
+
+### Manual setup in Capacitor (Ionic)
+
+Capacitor does not automatically include all changes to AndroidManifest.xml or gradle files from plugin.xml. This is a short guide to do it manually. Based on plugin v3.1.0 and @capacitor/android v5.5.1, future versions may be different.
+
+1. install the plugin from npm (`npm install cordova-plugin-health`), DO NOT USE awesome-codova-plugin, it hasn't been updated yet. Build the app as you would normally do (`npm run build`), sync it with the android code (`npx cap sync`) and get the Android project in Android Studio (`npx cap open android`) or another editor.
+2. add the Privacy Policy activity to AndroidManifest.xml, inside `<application></application>`:
+```xml
+      <!-- For supported versions through Android 13, create an activity to show the rationale
+       of Health Connect permissions once users click the privacy policy link. -->
+      <activity
+        android:name="org.apache.cordova.health.PermissionsRationaleActivity"
+        android:exported="true">
+        <intent-filter>
+          <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent-filter>
+      </activity>
+
+      <!-- For versions starting Android 14, create an activity alias to show the rationale
+       of Health Connect permissions once users click the privacy policy link. -->
+      <activity-alias
+        android:name="ViewPermissionUsageActivity"
+        android:exported="true"
+        android:targetActivity="org.apache.cordova.health.PermissionsRationaleActivity"
+        android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+        <intent-filter>
+          <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+          <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+        </intent-filter>
+      </activity-alias>
+```
+3. add the possibility to query for the presence of Health Connect to AndroidManifest.xml, inside the root tag:
+```xml
+      <!-- Check if Health Connect is installed -->
+      <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+      </queries>
+```
+4. add permissions to AndroidManifest.xml , inside the root tag. This depends on the actual data types you want to access. See [this](https://developer.android.com/health-and-fitness/guides/health-connect/plan/data-types) for a list.
+```xml
+      <uses-permission android:name="android.permission.health.READ_STEPS" />
+      <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+```
+5. modify the main build.gradle file and update:
+```gradle
+classpath 'com.android.tools.build:gradle:8.1.1'
+```
+
+6. modify the variables.gradle file, particularly:
+```gradle
+minSdkVersion = 26
+targetSdkVersion = 34
+compileSdkVersion = 34
+```
 
 ## Supported data types
 
-As HealthKit does not allow adding custom data types, only a subset of data types supported by HealthKit has been chosen.
+These are currently supported in both Android and iOS. Please notice that older versions of this plugin included more data types, but with Google Fit, not Health Connect. Support for previously supported data types has not been removed on iOS, it's simply not listed here. The plan is to complete the porting of all previously supported data types from Google Fit to Health Connect, just be patient, or give us a hand.
 
-| Data type       | Unit  |    HealthKit equivalent                       |  Google Fit equivalent                   |
+| Data type       | Unit  |    HealthKit equivalent                       |  Health Connect equivalent               |
 |-----------------|-------|-----------------------------------------------|------------------------------------------|
-| steps           | count | HKQuantityTypeIdentifierStepCount             | TYPE_STEP_COUNT_DELTA                    |
-| stairs           | count | HKQuantityTypeIdentifierFlightsClimbed             | NA                    |
-| distance        | m     | HKQuantityTypeIdentifierDistanceWalkingRunning + HKQuantityTypeIdentifierDistanceCycling | TYPE_DISTANCE_DELTA |
-| appleExerciseTime | min | HKQuantityTypeIdentifierAppleExerciseTime     | NA                                       |
-| calories        | kcal  | HKQuantityTypeIdentifierActiveEnergyBurned + HKQuantityTypeIdentifierBasalEnergyBurned | TYPE_CALORIES_EXPENDED |
-| calories.active | kcal  | HKQuantityTypeIdentifierActiveEnergyBurned    | TYPE_CALORIES_EXPENDED - (TYPE_BASAL_METABOLIC_RATE * time window) |
-| calories.basal  | kcal  | HKQuantityTypeIdentifierBasalEnergyBurned     | TYPE_BASAL_METABOLIC_RATE * time window  |
-| activity        | activityType | HKWorkoutTypeIdentifier                | TYPE_ACTIVITY_SEGMENT |
-| sleep           | sleepType | HKCategoryTypeIdentifierSleepAnalysis | TYPE_ACTIVITY_SEGMENT (and/or sleep sessions) |
-| height          | m     | HKQuantityTypeIdentifierHeight                | TYPE_HEIGHT                              |
-| weight          | kg    | HKQuantityTypeIdentifierBodyMass              | TYPE_WEIGHT                              |
-| bmi             | count | HKQuantityTypeIdentifierBodyMassIndex         | NA                                       |
-| heart_rate      | count/min | HKQuantityTypeIdentifierHeartRate         | TYPE_HEART_RATE_BPM                      |
-| heart_rate.resting | count/min | HKQuantityTypeIdentifierRestingHearRate | TBD                      |
-| heart_rate.variability      | ms | HKQuantityTypeIdentifierHeartRateVariabilitySDNN         | NA                   |
-| resp_rate       | count/min | HKQuantityTypeIdentifierRespiratoryRate   | TBD                      |
-| oxygen_saturation | %       | HKQuantityTypeIdentifierOxygenSaturation  | TYPE_OXYGEN_SATURATION                   |
-| vo2max          | ml/(kg * min) | HKQuantityTypeIdentifierVO2Max   | TBD                      |
-| temperature     | Celsius | HKQuantityTypeIdentifierBodyTemperature       | TBD                      |
-| fat_percentage  | %     | HKQuantityTypeIdentifierBodyFatPercentage     | TYPE_BODY_FAT_PERCENTAGE                 |
-| waist_circumference | m     | HKQuantityTypeIdentifierWaistCircumference     | NA                    |
-| blood_glucose   | mmol/L | HKQuantityTypeIdentifierBloodGlucose         | TYPE_BLOOD_GLUCOSE                       |
-| insulin         | IU    | HKQuantityTypeIdentifierInsulinDelivery       | NA                                       |
-| blood_pressure  | mmHg  | HKCorrelationTypeIdentifierBloodPressure      | TYPE_BLOOD_PRESSURE                      |
-| blood_pressure_systolic | mmHg     | HKQuantityTypeIdentifierBloodPressureSystolic     | NA                    |
-| blood_pressure_diastolic | mmHg     | HKQuantityTypeIdentifierBloodPressureDiastolic     | NA                    |
 | gender          |       | HKCharacteristicTypeIdentifierBiologicalSex   | NA        |
 | date_of_birth   |       | HKCharacteristicTypeIdentifierDateOfBirth     | NA        |
+| weight          | kg    | HKQuantityTypeIdentifierBodyMass              |   Weight                                 |
+| height          | m     | HKQuantityTypeIdentifierHeight                | HeightRecord                             |
+| bmi             | count | HKQuantityTypeIdentifierBodyMassIndex         | NA                                       |
+| fat_percentage  | %     | HKQuantityTypeIdentifierBodyFatPercentage     |   BodyFatRecord                          |
+| steps           | count | HKQuantityTypeIdentifierStepCount             |   StepsRecord                            |
+| distance        | m     | HKQuantityTypeIdentifierDistanceWalkingRunning + HKQuantityTypeIdentifierDistanceCycling | DistanceRecord |
+| activity        | activityType | HKWorkoutTypeIdentifier                |   ExerciseSessionRecord                  |
+| appleExerciseTime | min | HKQuantityTypeIdentifierAppleExerciseTime     | NA                                       |
+| sleep           | sleep | HKCategoryTypeIdentifierSleepAnalysis         | SleepSessionRecord                       |
+| calories.active | kcal  | HKQuantityTypeIdentifierActiveEnergyBurned    | ActiveCaloriesBurnedRecord               |
+| calories.basal  | kcal  | HKQuantityTypeIdentifierBasalEnergyBurned     | BasalMetabolicRateRecord * time window   |
+| calories        | kcal  | HKQuantityTypeIdentifierActiveEnergyBurned + HKQuantityTypeIdentifierBasalEnergyBurned | TotalCaloriesBurnedRecord |
+| heart_rate      | bpm   | HKQuantityTypeIdentifierHeartRate             | HeartRateRecord                          |
+| blood_glucose   | mmol/L | HKQuantityTypeIdentifierBloodGlucose         | BloodGlucoseRecord                       |
 | mindfulness     | sec   | HKCategoryTypeIdentifierMindfulSession        | NA                                       |
-| nutrition       |       | HKCorrelationTypeIdentifierFood               | TYPE_NUTRITION                           |
 | UVexposure      | count | HKQuantityTypeIdentifierUVExposure            | NA        |
-| nutrition.calories | kcal | HKQuantityTypeIdentifierDietaryEnergyConsumed | TYPE_NUTRITION, NUTRIENT_CALORIES      |
-| nutrition.fat.total | g | HKQuantityTypeIdentifierDietaryFatTotal       | TYPE_NUTRITION, NUTRIENT_TOTAL_FAT       |
-| nutrition.fat.saturated | g | HKQuantityTypeIdentifierDietaryFatSaturated | TYPE_NUTRITION, NUTRIENT_SATURATED_FAT |
-| nutrition.fat.unsaturated | g | NA                                      | TYPE_NUTRITION, NUTRIENT_UNSATURATED_FAT |
-| nutrition.fat.polyunsaturated | g | HKQuantityTypeIdentifierDietaryFatPolyunsaturated | TYPE_NUTRITION, NUTRIENT_POLYUNSATURATED_FAT |
-| nutrition.fat.monounsaturated | g | HKQuantityTypeIdentifierDietaryFatMonounsaturated | TYPE_NUTRITION, NUTRIENT_MONOUNSATURATED_FAT |
-| nutrition.fat.trans | g | NA                                            | TYPE_NUTRITION, NUTRIENT_TRANS_FAT (g)   |
-| nutrition.cholesterol | mg | HKQuantityTypeIdentifierDietaryCholesterol | TYPE_NUTRITION, NUTRIENT_CHOLESTEROL     |
-| nutrition.sodium | mg   | HKQuantityTypeIdentifierDietarySodium         | TYPE_NUTRITION, NUTRIENT_SODIUM          |
-| nutrition.potassium | mg | HKQuantityTypeIdentifierDietaryPotassium     | TYPE_NUTRITION, NUTRIENT_POTASSIUM       |
-| nutrition.carbs.total | g | HKQuantityTypeIdentifierDietaryCarbohydrates | TYPE_NUTRITION, NUTRIENT_TOTAL_CARBS    |
-| nutrition.dietary_fiber | g | HKQuantityTypeIdentifierDietaryFiber      | TYPE_NUTRITION, NUTRIENT_DIETARY_FIBER   |
-| nutrition.sugar | g     | HKQuantityTypeIdentifierDietarySugar          | TYPE_NUTRITION, NUTRIENT_SUGAR           |
-| nutrition.protein | g   | HKQuantityTypeIdentifierDietaryProtein        | TYPE_NUTRITION, NUTRIENT_PROTEIN         |
-| nutrition.vitamin_a | mcg (HK), IU (GF) | HKQuantityTypeIdentifierDietaryVitaminA | TYPE_NUTRITION, NUTRIENT_VITAMIN_A |
-| nutrition.vitamin_c | mg | HKQuantityTypeIdentifierDietaryVitaminC | TYPE_NUTRITION, NUTRIENT_VITAMIN_C            |
-| nutrition.calcium | mg  | HKQuantityTypeIdentifierDietaryCalcium        | TYPE_NUTRITION, NUTRIENT_CALCIUM         |
-| nutrition.iron  | mg    | HKQuantityTypeIdentifierDietaryIron           | TYPE_NUTRITION, NUTRIENT_IRON            |
-| nutrition.water | ml    | HKQuantityTypeIdentifierDietaryWater          | TYPE_HYDRATION                           |
-| nutrition.caffeine | g  | HKQuantityTypeIdentifierDietaryCaffeine       | NA                                       |
+
+
 
 **Note**: units of measurement are fixed!
 
 Returned objects contain a set of fixed fields:
 
-- startDate: {type: Date} a date indicating when the data point starts
-- endDate: {type: Date} a date indicating when the data point ends
-- unit: {type: String} the unit of measurement
+- startDate: a date indicating when the data point starts
+- endDate: a date indicating when the data point ends
+- unit: the unit of measurement, as a string
 - value: the actual value
-- sourceBundleId: {type: String} the identifier of the app that produced the data. It can be the "stream identifier" when the app is Google Fit
-- sourceName: {type: String} (only on iOS) the name of the app that produced the data (as it appears to the user)
-- id: {type: String} (only on iOS) the unique identifier of that measurement
+- sourceBundleId: the identifier of the app that produced the data
+- sourceName: (only on iOS) the name of the app that produced the data (as it appears to the user)
+- sourceDevice: (only on Android) the device where the data came from manufacturer and model 
+- entryMethod: (only on Android) method of insertion, can be "actively_recorded", "automatically_recorded", "manual_entry" or "unknown"
+- id: the unique identifier of that measurement
+
 
 Example values:
 
+
 | Data type      | Value                             |
 |----------------|-----------------------------------|
-| steps          | 34                                |
-| distance       | 101.2                             |
-| appleExerciseTime | 24 <br/>**Notes**: only available on iOS|
-| calories       | 245.3                             |
-| activity       | "walking"<br />**Notes**: recognized activities and their mappings in Google Fit / HealthKit can be found [here](activities_map.md) <br /> the query also returns calories (kcal) and distance (m)<br />**Warning** If you want to fetch activities you also have to request permission for 'calories' and 'distance' (Android). |
-| sleep       | 'sleep.light' <br />**Notes**: recognized sleep stages and their mappings in Google Fit / HealthKit can be found [here](sleep_map.md) |
-| height         | 1.85                              |
-| weight         | 83.3                              |
-| heart_rate     | 66                                |
-| heart_rate.resting | 63                            |
-| heart_rate.variability | 100                       |
-| resp_rate      | 12                                |
-| vo2max         | 34                                |
-| temperature    | 36.2                              |
-| fat_percentage | 0.312                             |
-| waist_circumference | 0.65                         |
-| blood_glucose  | { glucose: 5.5, meal: 'breakfast', sleep: 'fully_awake', source: 'capillary_blood' }<br />**Notes**: <br />to convert to mg/dL, multiply by `18.01559` ([The molar mass of glucose is 180.1559](http://www.convertunits.com/molarmass/Glucose))<br />`meal` can be: 'before_meal' (iOS only), 'after_meal' (iOS only), 'fasting', 'breakfast', 'dinner', 'lunch', 'snack', 'unknown', 'before_breakfast', 'before_dinner', 'before_lunch', 'before_snack', 'after_breakfast', 'after_dinner', 'after_lunch', 'after_snack'<br />`sleep` can be: 'fully_awake', 'before_sleep', 'on_waking', 'during_sleep'<br />`source` can be: 'capillary_blood' ,'interstitial_fluid', 'plasma', 'serum', 'tears', whole_blood' |
-| insulin        | { insulin: 2.3, reason: 'bolus' }<br />**Notes**: only available on iOS<br />`reason` can be 'bolus' or 'basal' |
-| blood_pressure | { systolic: 110, diastolic: 70 }  |
-| blood_pressure_systolic | 110  |
-| blood_pressure_diastolic | 70  |
 | gender         | "male" <br/>**Notes**: only available on iOS |
 | date_of_birth  | { day: 3, month: 12, year: 1978 } <br/>**Notes**: currently only available on iOS |
-| mindfulness     | 1800 <br/>**Notes**: only available on iOS |
-| nutrition      | { item: "cheese", meal_type: "lunch", brand_name: "McDonald's", nutrients: { nutrition.fat.saturated: 11.5, nutrition.calories: 233.1 } } <br/>**Note**: the `brand_name` property is only available on iOS |
-| nutrition.X    | 12.4                              |
+| weight         | 83.3                              |
+| height         | 1.72                              |
+| bmi            | 25 <br/>**Notes**: only available on iOS |
+| fat_percentage | 0.312                             |
+| steps          | 34                                |
+| distance       | 101.2                             |
+| activity       | "walking"<br />**Notes**: recognized activities and their mappings in Health Connect / HealthKit can be found [here](activities_map.md). Additional calories (in kcal) and distance (in m) can be added if the query has the `includeCalories` and/or `includeDistance` flags set. **Warning** If you want to fetch calories and/or distance, permission to access those quantities should be requested. |
+| appleExerciseTime | 24 <br/>**Notes**: only available on iOS|
+| sleep       | 'sleep.light' <br />**Notes**: recognized sleep stages and their mappings in HealthConnect / HealthKit can be found [here](sleep_map.md) <br> in Android it is also possible to retrieve an entire session, in which case the value is an array of sleep stages [ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ...] |
+| calories.X     | 245.3                             |
+| heart_rate     | 66                                |
+| blood_glucose  | { glucose: 5.5, meal: 'breakfast', sleep: 'fully_awake', source: 'capillary_blood' }<br />**Notes**: to convert to mg/dL, multiply by `18.01559` ([The molar mass of glucose is 180.1559](http://www.convertunits.com/molarmass/Glucose)). `meal` can be: 'before_' / 'after_' / 'fasting_' (Android only) + 'meal' (iOS only) / 'breakfast' / 'dinner' / 'lunch' / 'snack' / 'unknown'. `sleep` can be (iOS only): 'fully_awake', 'before_sleep', 'on_waking', 'during_sleep'. `source` can be: 'capillary_blood' ,'interstitial_fluid', 'plasma', 'serum', 'tears', whole_blood', 'unknown'|
+| mindfulness    | 1800 <br/>**Notes**: only available on iOS |
+| UVexposure     | 12 <br/>**Notes**: only available on iOS |
+
 
 ## Methods
 
 ### isAvailable()
 
-Tells if either Google Fit or HealthKit are available.
+Tells if either HealthKit of Health Connect are available.
 
-```
-navigator.health.isAvailable(successCallback, errorCallback)
-```
-
-- successCallback: {type: function(available)}, if available a true is passed as argument, false otherwise
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
-
-#### Android quirks
-
-- To check for installation of Google Fit, you will need to add `<package android:name="com.google.android.apps.fitness" />` under `queries` to AndroidManifest.xml via config.xml. See [this article](https://medium.com/androiddevelopers/package-visibility-in-android-11-cc857f221cd9) for info
-
-### promptInstallFit() - Android only
-
-Checks if recent Google Play Services and Google Fit are installed.
-If the play services are not installed, or are obsolete, it will show a pop-up suggesting to download them.
-If Google Fit is not installed, it will open the Play Store at the location of the Google Fit app.
-The plugin does not wait until the missing packages are installed, it will return immediately.
-If both Play Services and Google Fit are available, this function just returns without any visible effect.
-
-This function is only available on Android.
-
-
-```
-navigator.health.promptInstallFit(successCallback, errorCallback)
+```javascript
+cordova.plugins.health.isAvailable(successCallback, errorCallback)
 ```
 
-- successCallback: {type: function()}, called if the function was called
-- errorCallback: {type: function(err)}, called if something went wrong
+- successCallback: if available a true is passed as argument, false otherwise
+- errorCallback: called if something went wrong, err contains a textual description of the problem
 
+
+### getHealthConnectFromStore()
+
+Android only. Launches the PlayStore to retrieve HealthConnect. From Android 14 and up this is not needed, becuase HealthConnect becomes part of the operating system.
+
+```javascript
+cordova.plugins.health.getHealthConnectFromStore(successCallback, errorCallback)
+```
+
+- successCallback: if available a true is passed as argument, false otherwise
+- errorCallback: called if something went wrong, err contains a textual description of the problem
+
+
+### launchPrivacyPolicy() Android only
+
+Launches the Privacy Policy screen needed by Health Connect. Use it for testing how it appears.
+
+```javascript
+cordova.plugins.health.launchPrivacyPolicy(successCallback, errorCallback)
+```
+
+- successCallback: screen has been launched
+- errorCallback: called if something went wrong
+
+
+### openHealthSettings()
+
+Opens the health app (HealthConnect on Android, Health app on iOS) so that the user can review permissions and settings.
+
+```javascript
+cordova.plugins.health.openHealthSettings(successCallback, errorCallback)
+```
 
 ### requestAuthorization()
 
-Requests read and write access to a set of data types.
+Requests read and/or write access to a set of data types.
 It is recommendable to always explain why the app needs access to the data before asking the user to authorize it.
 
-**Important:** this method must be called before using the query and store methods, even if the authorization has already been given at some point in the past.
-Failure to do so may cause your app to crash, or in the case of Android, Google Fit may not be ready.
+If the user has already granted permissions to the app, this function will not prompt the user again, but will call the callback immediately.
 
-```
-navigator.health.requestAuthorization(datatypes, successCallback, errorCallback)
-```
 
-- datatypes: {type: Mixed array}, a list of data types you want to be granted access to. You can also specify read or write only permissions.
 ```javascript
-[
-  'calories', 'distance',   // Read and write permissions
-  {
-    read : ['steps'],       // Read only permission
-    write : ['height', 'weight']  // Write only permission
-  }
-]
+cordova.plugins.requestAuthorization(datatypes, successCallback, errorCallback)
 ```
-- successCallback: {type: function}, called if all OK
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
+
+- datatypes: an object containing data types you want to be granted access to. Example:
+```javascript
+{
+  read : ['steps'],            // Read permission
+  write : ['steps', 'weight']  // Write permission
+}
+```
+- successCallback: called if permission process completed, called independently of if the user has granted permissions or not, the argument may indicate if the permissions have been granted (but it is not guaranteed that all have been granted)
+- errorCallback: called if something went wrong, the argument contains a textual description of the problem
 
 #### Android quirks
 
-- It will try to get authorization from the Google fitness APIs. It is necessary that the app's package name and the signing key are registered in the Google API console (see [here](https://developers.google.com/fit/android/get-api-key)).
-- Be aware that if the activity is destroyed (e.g. after a rotation) or is put in background, the connection to Google Fit may be lost without any callback. Going through the authorization will ensure that the app is connected again.
-- Be aware that if you want to fetch activities you also have to request permission for 'calories' and 'distance'.
-- In Android 6 and over, this function will also ask for some dynamic permissions if needed (e.g. in the case of "distance" or "activity", it will need access to ACCESS_FINE_LOCATION).
+- Currently, *permissions can be requested no more than 3 times in an app*! This is regardless of if the permissions were granted, denied or the dialog was canceled. This is how it is implemented in HealthConnect, not an issue with the plugin. See discussion [here](https://issuetracker.google.com/issues/233239418?pli=1). A workaround in your app can be to check if permissions have been granted upon request and, in the negative case, launch the HealthConnect app instead and ask users to grant permissions manually, which is a horrible user experience.
 
 #### iOS quirks
 
-- Once the user has allowed (or not allowed) the app, this function will not prompt the user again, but will call the callback immediately. See [this](https://developer.apple.com/documentation/healthkit/hkhealthstore/1614152-requestauthorization) for further explanation.
+- HealthKit does never reveal if the user has actually granted permission. This is by design.
+- Once the user has rejected permissions, this function will not prompt the user again, but will call the callback immediately. See [this](https://developer.apple.com/documentation/healthkit/hkhealthstore/1614152-requestauthorization) for further explanation.
 
-### isAuthorized()
 
+### isAuthorized() 
 Check if the app has authorization to read/write a set of datatypes.
 
-```
-navigator.health.isAuthorized(datatypes, successCallback, errorCallback)
+```javascript
+cordova.plugins.health.isAuthorized(datatypes, successCallback, errorCallback)
 ```
 
-- datatypes: {type: Mixed array}, a list of data types you want to check access of, same as in requestAuthorization
-- successCallback: {type: function(authorized)}, if the argument is true, the app is authorized
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
+- datatypes: an object containing data types you want to be granted access to. Example:
+```javascript
+{
+  read : ['steps'],            // Read permission
+  write : ['steps', 'weight']  // Write permission
+}
+```
+- successCallback: if the argument is true, the app is authorized
+- errorCallback: called if something went wrong, the argument contains a textual description of the problem
 
 #### iOS quirks
 
 - This method will only check authorization status for writeable data. Read-only data will always be considered as not authorized.
 This is [an intended behaviour of HealthKit](https://developer.apple.com/reference/healthkit/hkhealthstore/1614154-authorizationstatus).
 
-
-### disconnect() - Android only
-
-Removes authorization from the app. Works only on Android.
-
-```
-navigator.health.disconnect(successCallback, errorCallback)
-```
-
-- successCallback: {type: function(disconnected)}, if the argument is true, the app has been disconnected from Google Fit
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
 
 
 ### query()
@@ -295,58 +307,52 @@ Gets all the data points of a certain data type within a certain time window.
 
 **Warning:** if the time span is big, it can generate long arrays!
 
-```
-navigator.health.query({
+```javascript
+cordova.plugins.health.query({
   startDate: new Date(new Date().getTime() - 3 * 24 * 60 * 60 * 1000), // three days ago
   endDate: new Date(), // now
   dataType: 'steps',
-  limit: 1000
+  limit: 1000,
+  ascending: true,
 }, successCallback, errorCallback)
 ```
 
-- startDate: {type: Date}, start date from which to get data
-- endDate: {type: Date}, end data to which to get the data
-- dataType: {type: String}, the data type to be queried (see above)
-- limit: {type: integer}, optional, sets a maximum number of returned values
-- includeCalsAndDist: {type: boolean}, optional, only used for activity. Adds 2 additional fields, calories (kcal) and distance (m) for each detected activity. **Warning**: access to calories and distance must have been granted!
-- successCallback: {type: function(data) }, called if all OK, data contains the result of the query in the form of an array of: { startDate: Date, endDate: Date, value: xxx, unit: 'xxx', sourceName: 'aaaa', sourceBundleId: 'bbbb' }
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
-- filtered: {type: boolean}, optional, filters out user-entered activities if set to true
-
+- startDate: start date from which to get data
+- endDate: end data to which to get the data
+- dataType: the data type to be queried (see above)
+- limit: optional, sets a maximum number of returned values, default is 1000
+- ascending: optional, datapoints are ordered in an descending fashion (from newer to older) se this to true to revert this behaviour
+- filterOutUserInput: optional, if true, filters out user-entered activities (iOS only)
+- includeCalories: optional, used only for dataType "activity". When querying, for each activity, also the active calories (in kcal) will be added. ***Warning*** the app requires access to calories.active to be granted
+- includeDistance: optional, used only for dataType "activity". When querying, for each activity, also the distance, run or cycled, (in m) will be added. ***Warning*** the app requires access to distance to be granted
+- successCallback: called if all OK, argument contains the result of the query in the form of an array of: { startDate: Date, endDate: Date, value: xxx, unit: 'xxx', sourceName: 'aaaa', sourceBundleId: 'bbbb' }
+- errorCallback: called if something went wrong, argument contains a textual description of the problem
 
 #### iOS quirks
 
-- Limit is set to 1000 by default.
-- Datapoints are ordered in an descending fashion (from newer to older). You can revert this behaviour by adding `ascending: true` to your query object.
-- HealthKit does not calculate active and basal calories - these must be inputted from an app
-- HealthKit does not detect activities automatically - these must be inputted from an app
+- HealthKit does not calculate active and basal calories - these must be input from an app
+- HealthKit does not detect activities automatically - these must be input from an app
 - When querying for activities, only events whose startDate and endDate are **both** in the query range will be returned.
-- Activities can include a duration (in seconds), this may be different than the endTime - startTime and actually more accurate.
-- When querying for nutrition, HealthKit only returns those stored as correlation. To be sure to get all stored quantities, it's better to query nutrients individually (e.g. MyFitnessPal doesn't store meals as correlations).
-- nutrition.vitamin_a is given in micrograms. Automatic conversion to international units is not trivial and depends on the actual substance (see [here](https://dietarysupplementdatabase.usda.nih.gov/ingredient_calculator/help.php#q9)).
-- The blood glucose meal information is stored by the Health App as preprandial (before a meal) or postprandial (after a meal), which are mapped to 'before_meal' and 'after_meal'. These two specific values are only used in iOS and can't be used in Android apps.
+- When duration (in seconds) is returned, this may be different than the endTime - startTime and actually more accurate.
+
 
 #### Android quirks
 
-- It is possible to query for "raw" steps or to select those as filtered by the Google Fit app. In the latter case the query object must contain the field `filtered: true`.
-- calories.basal is returned as an average per day, and usually is not available in all days.
-- calories.active is computed by subtracting the basal calories from the total. As basal energy expenditure, an average is computed from the week before endDate.
-- Active and basal calories can be automatically calculated.
-- Some activities (still, walking, running, biking, in vehicle) can be determined automatically by Google Fit.
-- Activities in Google Fit can also include sleep, but this has been deprecated in favour of a separate sleep type.
-- When querying sleep both data points with sleep segment type and [sleep sessions](https://developers.google.com/fit/scenarios/read-sleep-data) are retrieved. If an app stores both, it is possible that data comes duplicated (this needs to be confirmed! please create an issue if you notice it!).
-- When querying for activities, if an event's startDate is out of the query range but its endDate is within, Google Fit will truncate the startDate to match that of the query.
-- When querying for nutrition, Google Fit always returns all the nutrition elements it has.
-- nutrition.vitamin_a is given in international units. Automatic conversion to micrograms is not trivial and depends on the actual substance (see [here](https://dietarysupplementdatabase.usda.nih.gov/ingredient_calculator/help.php#q9)).
-
+- Health Connect can read data for up to 30 days prior to the time permission was first granted. If the app is reinstalled, the permission history is lost and you can only query from 30 days before installation. See [note here](https://developer.android.com/health-and-fitness/guides/health-connect/develop/read-data).
+- Not all datatypes support start and end timestamps, some, such as weight, only have one timestamp. The plugin will just set both start and end to the same value in those cases.
+- Active and basal calories can be automatically calculated by Health Connect.
+- calories.basal is returned as an average per day (kcal/day), and is usually stored quite sparsely (it rarely change, but chnages in weight and height trigger a ricalculation).
+- Calories and distance for activities are actually queried indipendently, using the timestamps for each returned activity. This may considerably slow down the query if the returned activities are many. Use with care.
+- sleep in HealthConnect is stored in sessions composed of stages. If you want to retrieve sessions instead of single stages, add the following flag to the query object: `sleepSession: true`. The returned value will be an array of objects like: `[ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ... ]`
+- heart_rate is in reality stored as an array of values within a given window of time, however, each value is returned separately here to make the API compatible with iOS.
 
 ### queryAggregated()
 
 Gets aggregated data in a certain time window.
 Usually the sum is returned for the given quantity.
 
-```
-navigator.health.queryAggregated({
+```javascript
+cordova.plugins.health.queryAggregated({
   startDate: new Date(new Date().getTime() - 3 * 24 * 60 * 60 * 1000), // three days ago
   endDate: new Date(), // now
   dataType: 'steps',
@@ -354,14 +360,13 @@ navigator.health.queryAggregated({
 }, successCallback, errorCallback)
 ```
 
-- startDate: {type: Date}, start date from which to get data
-- endDate: {type: Date}, end data to which to get the data
-- dataType: {type: String}, the data type to be queried (see below for supported data types)
-- bucket: {type: String}, if specified, aggregation is grouped an array of "buckets" (windows of time), supported values are: 'hour', 'day', 'week', 'month', 'year'
-- includeCalsAndDist: {type: boolean}, optional, only used for activity, adds 2 additional fields, calories (kcal) and distance (m) for each detected activity. **Warning**: access to calories and distance must have been granted!
-- successCallback: {type: function(data)}, called if all OK, data contains the result of the query, see below for returned data types. If no buckets is specified, the result is an object. If a bucketing strategy is specified, the result is an array.
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
-- filtered: {type: boolean}, optional, filters out user-entered activities if set to true (only works on iOS for aggregated query)
+- startDate: start date from which to get data
+- endDate: end data to which to get the data
+- dataType: the data type to be queried (see below for supported data types)
+- bucket: if specified, aggregation is grouped an array of "buckets" (windows of time), supported values are: 'hour', 'day', 'week', 'month', 'year'
+- filterOutUserInput: optional, filters out user-entered activities if set to true (only works on iOS)
+- successCallback: called if all OK, argument contains the result of the query, see below for returned data types. If no buckets is specified, the result is an object. If a bucketing strategy is specified, the result is an array.
+- errorCallback: called if something went wrong, argument contains a textual description of the problem
 
 
 Not all data types are supported for aggregated queries.
@@ -369,130 +374,124 @@ The following table shows what types are supported and examples of the returned 
 
 | Data type       | Example of returned object |
 |-----------------|----------------------------|
+| height          | { startDate: Date, endDate: Date, value: { average: 1.8, min:1.7, max: 1.8 }, unit: 'count' } <br />**Note:** Android only |
+| weight          | { startDate: Date, endDate: Date, value: { average: 73, min:72.5, max: 74 }, unit: 'kg' } <br />**Note:** Android only |
 | steps           | { startDate: Date, endDate: Date, value: 5780, unit: 'count' } |
 | distance        | { startDate: Date, endDate: Date, value: 12500.0, unit: 'm' } |
-| calories        | { startDate: Date, endDate: Date, value: 25698.1, unit: 'kcal' } |
-| calories.active | { startDate: Date, endDate: Date, value: 3547.4, unit: 'kcal' } |
-| calories.basal  | { startDate: Date, endDate: Date, value: 13146.1, unit: 'kcal' } |
-| activity        | { startDate: Date, endDate: Date, value: { still: { duration: 520000 }, walking: { duration: 223000 }}, unit: 'activitySummary' }<br />**Note:** duration is expressed in milliseconds, additional distance (in meters) and calories (in kcal) can be added |
-| nutrition       | { startDate: Date, endDate: Date, value: { nutrition.fat.saturated: 11.5, nutrition.calories: 233.1 }, unit: 'nutrition' }<br />**Note:** units of measurement for nutrients are fixed according to the table at the beginning of this README |
-| nutrition.x     | { startDate: Date, endDate: Date, value: 23, unit: 'mg'} |
+| calories        | { startDate: Date, endDate: Date, value: 2892.4, unit: 'kcal' } |
+| calories.active | { startDate: Date, endDate: Date, value: 25698.4, unit: 'kcal' } |
+| calories.basal  | { startDate: Date, endDate: Date, value: 3547.3, unit: 'kcal' } |
+| activity        | Android: { startDate: Date, endDate: Date, value: 567000, unit: 'ms' } <br /> iOS: { startDate: Date, endDate: Date, value: { still: { duration: 520000 }, walking: { duration: 223000 }}, unit: 'activitySummary' }<br />**Note:** durations are expressed in milliseconds |
+| sleep           | { startDate: Date, endDate: Date, value: 493, unit: 's' }  <br/>**Notes**: Android iOS |
+| appleExerciseTime | { startDate: Date, endDate: Date, value: 500, unit: 'min' }  <br/>**Notes**: iOS only |
+| heart_rate        | { startDate: Date, endDate: Date, value: { average: 72, min: 68, max: 82 }, unit: 'bpm' } |
+
 
 #### Quirks
 
+- Health Connect does not currently support grouping by activity type, therefore only the total time for all activities can be returned.
 - The start and end dates returned are the date of the first and the last available samples. If no samples are found, start and end may not be set.
 - When bucketing, buckets will include the whole hour / day / month / week / year where start and end times fall into. For example, if your start time is 2016-10-21 10:53:34, the first daily bucket will start at 2016-10-21 00:00:00.
 - Weeks start on Monday.
-- You can query for "filtered steps" adding the flag `filtered: true` to the query object. This returns the steps as filtered out by Google Fit. It currently has no effect on iOS.
+- Aggreagated height only exists on Android.
 
-#### iOS quirks
-
-- When querying for nutrition, HealthKit only returns those stored as correlation. To be sure to get all stored quantities, it's better to query nutrients individually (e.g. MyFitnessPal doesn't store meals as correlations).
-- nutrition.vitamin_a is given in micrograms. Automatic conversion to international units is not trivial and depends on the actual substance (see [here](https://dietarysupplementdatabase.usda.nih.gov/ingredient_calculator/help.php#q9)).
 
 #### Android quirks
 
-- nutrition.vitamin_a is given in international units. Automatic conversion to micrograms is not trivial and depends on the actual substance (see [here](https://dietarysupplementdatabase.usda.nih.gov/ingredient_calculator/help.php#q9)).
-- `filtered: true` has no effect for aggregated queries currently.
+- Currently, it is not possible to group by activity type in aggregated queries, only the total time for all activities can be returned. See discussion [here](https://stackoverflow.com/questions/77512832/how-to-aggregate-by-exercise-type-in-the-android-health-connect-api/77512845#77512845).
+- When storing heart_rate, you can also provide the value as an array of [ {bpm: 81, timestamp: Date }, ... ]. This is how the heart rate is actually stored internally and is probably and more efficient.
 
 ### store()
 
 Stores a data point.
 
-```
-navigator.health.store({
+```javascript
+cordova.plugins.health.store({
 	startDate:  new Date(new Date().getTime() - 3 * 60 * 1000), // three minutes ago
 	endDate: new Date(),
 	dataType: 'steps',
 	value: 180,
-	sourceBundleId: 'com.example.my_app'
 }, successCallback, errorCallback)
 ```
 
-- startDate: {type: Date}, start date from which the new data starts
-- endDate: {type: Date}, end date to which he new data ends
-- dataType: {type: a String}, the data type
-- value: {type: a number or an Object}, the value, depending on the actual data type. In the case of activity, the value must be set as the activity name.
-- sourceBundleId: {type: String}, the complete package of the source that produced this data. In Android, if not specified, it's assigned to the package of the App. In iOS this is ignored and set automatically to the bundle id of the app.
-- successCallback: {type: function}, called if all OK
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
+- startDate: start date from which the new data starts
+- endDate: end date to which he new data ends
+- dataType: the data type
+- value: the value, depending on the actual data type
+- successCallback: called if all OK, in Android, argument returns the ID of the data point that has been inserted
+- errorCallback: called if something went wrong, argument contains a textual description of the problem
+
 
 #### iOS quirks
 
+- In iOS you cannot store the total calories, you need to specify either basal or active. If you use total calories, the active ones will be stored.
+- In iOS distance is assumed to be of type WalkingRunning, if you want to explicitly set it to Cycling you need to add the field `cycling: true`.
 - When storing an activity, you can also specify calories (active, in kcal) and/or distance (in meters). For example: `dataType: 'activity', value: 'walking', calories: 20, distance: 520`. Distance is set as DistanceWalkingRunning unless an additional `cycling: true` is added to the object. Be aware that you need permission to write calories and distance first, or the call will fail.
 - In iOS you cannot store the total calories, you need to specify either basal or active. If you use total calories, the active ones will be stored.
 - In iOS distance is assumed to be of type WalkingRunning, if you want to explicitly set it to Cycling you need to add the field `cycling: true`.
-- The blood glucose meal information can be stored as 'before_meal' and 'after_meal', but these two can't be used in Android apps.
 
 #### Android quirks
 
-- Google Fit doesn't allow you to overwrite data points that overlap with others already stored of the same type (see [here](https://developers.google.com/fit/android/history#manageConflicting)). At the moment there is no support for [update](https://developers.google.com/fit/android/history#updateData).
-- Storing of nutrients is not supported at the moment in Android.
-- In Android you can only store active calories, as the basal are estimated automatically. If you store total calories, these will be treated as active.
+- This operation correponds to an insert, not an update. If you want to update the data point you need to delete it first.
+- Not all datatypes support start and end timestamps, some, such as weight, only have one timestamp. The plugin will use the start timestamp to set the actual one.
+- In Android you can only store basal rate, that is a power. This is estimated from the kcals provided as an argument, divided by the time between the start and end time. When you query the individual sample, you get the kcal/day back, not the kcal, unless you do an aggregated query.
+- sleep in HealthConnect is stored in sessions composed of stages. By default, this function will store each stage as an indipendent session, but if you want to aggregate the stages into a single session, use the flag: `sleepSession: true` and use an array of objects like `[ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ... ]` as value.
+
 
 ### delete()
 
-Deletes a range of data points.
+Deletes data points. You can either delete a single data point (using its id, Android only), or a set of datapoints within a time range.
 
-```
-navigator.health.delete({
+```javascript
+cordova.plugins.health.delete({
 	startDate:  new Date(new Date().getTime() - 3 * 60 * 1000), // three minutes ago
 	endDate: new Date(),
 	dataType: 'steps'
 }, successCallback, errorCallback)
 ```
 
-- startDate: {type: Date}, start date from which to delete data
-- endDate: {type: Date}, end date to which to delete the data
-- dataType: {type: a String}, the data type to be deleted
-- successCallback: {type: function}, called if all OK
-- errorCallback: {type: function(err)}, called if something went wrong, err contains a textual description of the problem
+or (Android only):
+
+```javascript
+cordova.plugins.health.delete({
+	id: '812n12123nd23edj3234'
+	dataType: 'steps'
+}, successCallback, errorCallback)
+```
+
+- startDate: start date from which to delete data
+- endDate: end date to which to delete the data
+- id: id of the point to be deleted (Android only for now)
+- dataType: the data type to be deleted
+- successCallback: called if all OK
+- errorCallback: called if something went wrong, argument contains a textual description of the problem
 
 #### iOS quirks
 
 - You cannot delete the total calories, you need to specify either basal or active. If you use total calories, the active ones will be delete.
 - Distance is assumed to be of type WalkingRunning, if you want to explicitly set it to Cycling you need to add the field `cycling: true`.
-- Deleting sleep activities is not supported at the moment.
+- Deleting sleep is not supported at the moment.
 
 #### Android quirks
 
-- Google Fit doesn't allow you to delete data points that were generated by other apps
-- You can only delete active calories, as the basal are estimated automatically. If you try to delete total calories, these will be treated as active.
+- Health Connect doesn't allow you to delete data points that were generated by other apps, only those generated by your app.
 
-## Differences between HealthKit and Google Fit
-
-* HealthKit includes medical data (e.g. blood glucose), whereas Google Fit is mainly meant for fitness data (although [now supports some medical data too](https://developers.google.com/android/reference/com/google/android/gms/fitness/data/HealthDataTypes)).
-* HealthKit provides a data model that is not extensible, while Google Fit allows defining custom data types.
-* HealthKit allows to insert data with the unit of measurement of your choice, and automatically translates units when queried, whereas Google Fit uses fixed units of measurement.
-* HealthKit automatically counts steps and distance when you carry your phone with you and if your phone has the CoreMotion chip. Google Fit does it independently on the HW chip and also detects the kind of activity (sedentary, running, walking, cycling, in vehicle).
-* HealthKit can only compute distance for running/walking activities, while Google Fit can also do so for bicycle events.
 
 ## External resources
 
 * The official Apple documentation for HealthKit [can be found here](https://developer.apple.com/library/ios/documentation/HealthKit/Reference/HealthKit_Framework/index.html#//apple_ref/doc/uid/TP40014707).
 * For functions that require the `unit` attribute, you can find the comprehensive list of possible units from the [Apple Developers documentation](https://developer.apple.com/library/ios/documentation/HealthKit/Reference/HKUnit_Class/index.html#//apple_ref/doc/uid/TP40014727-CH1-SW2).
 * [HealthKit constants](https://developer.apple.com/library/ios/documentation/HealthKit/Reference/HealthKit_Constants/index.html), used throughout the code.
-* Google Fit [supported data types](https://developers.google.com/fit/android/data-types).
+* Health Connect [supported data types](https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/package-summary).
 
-## Roadmap
-
-Short term:
-
-- Add more datatypes (body fat percentage, oxygen saturation, temperature, respiratory rate)
-
-Long term:
-
-- Include [Core Motion Activity API](https://developer.apple.com/reference/coremotion/cmmotionactivitymanager)
-- Add registration to updates (e.g. in Google Fit:  HistoryApi#registerDataUpdateListener()).
-- Add support for Samsung Health as an alternate health record for Android.
 
 ## Contributions
 
-Any help is more than welcome!
+Any help is more than welcome! Raise issues, send Pull requests. I usually reply quickly. I know that this plugin is used in production in some commercial apps (includine mine), so I take it seriously.
 
 I don't know Objective C and I am not interested in learning it now, so I would particularly appreciate someone who could give me a hand with the iOS part.
 Also, I would love to know from you if the plugin is currently used in any app actually available online.
+Paid consultancy is also possible if you need to speed up some part of the plugin, or other stuff. 
 Just send me an email to my_username at gmail.com.
-For donations, you can use my [monzo.me](https://monzo.me/dariosalvi) account.
 
 Thanks!

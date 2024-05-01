@@ -1,7 +1,10 @@
+/**
+ * Cordova plugin that accesses the Health Connect API
+ */
 package org.apache.cordova.health;
 
+import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.util.Log;
 
@@ -9,41 +12,62 @@ import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContract;
 import androidx.health.connect.client.HealthConnectClient;
+import androidx.health.connect.client.PermissionController;
 import androidx.health.connect.client.aggregate.AggregateMetric;
 import androidx.health.connect.client.aggregate.AggregationResult;
 import androidx.health.connect.client.aggregate.AggregationResultGroupedByDuration;
 import androidx.health.connect.client.aggregate.AggregationResultGroupedByPeriod;
+import androidx.health.connect.client.permission.HealthPermission;
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord;
+import androidx.health.connect.client.records.BasalMetabolicRateRecord;
+import androidx.health.connect.client.records.BloodGlucoseRecord;
+import androidx.health.connect.client.records.BodyFatRecord;
 import androidx.health.connect.client.records.DistanceRecord;
+import androidx.health.connect.client.records.ExerciseLap;
+import androidx.health.connect.client.records.ExerciseSegment;
 import androidx.health.connect.client.records.ExerciseSessionRecord;
+import androidx.health.connect.client.records.HeartRateRecord;
+import androidx.health.connect.client.records.HeightRecord;
 import androidx.health.connect.client.records.Record;
+import androidx.health.connect.client.records.SleepSessionRecord;
+import androidx.health.connect.client.records.StepsRecord;
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord;
+import androidx.health.connect.client.records.WeightRecord;
+import androidx.health.connect.client.records.metadata.DataOrigin;
+import androidx.health.connect.client.records.metadata.Device;
+import androidx.health.connect.client.records.metadata.Metadata;
 import androidx.health.connect.client.request.AggregateGroupByDurationRequest;
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest;
 import androidx.health.connect.client.request.AggregateRequest;
 import androidx.health.connect.client.request.ReadRecordsRequest;
-import androidx.health.connect.client.PermissionController;
-import androidx.health.connect.client.permission.HealthPermission;
-import androidx.health.connect.client.records.metadata.DataOrigin;
 import androidx.health.connect.client.response.InsertRecordsResponse;
 import androidx.health.connect.client.response.ReadRecordsResponse;
 import androidx.health.connect.client.time.TimeRangeFilter;
+import androidx.health.connect.client.units.Energy;
+import androidx.health.connect.client.units.Length;
+import androidx.health.connect.client.units.Percentage;
+import androidx.health.connect.client.units.Power;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
+import org.apache.cordova.LOG;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.time.ZoneId;
-import java.util.ArrayList;
+import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -51,633 +75,1012 @@ import kotlin.coroutines.EmptyCoroutineContext;
 import kotlin.reflect.KClass;
 import kotlinx.coroutines.BuildersKt;
 
-/**
- * Health plugin Android code.
- * MIT licensed.
- */
+
 public class HealthPlugin extends CordovaPlugin {
-  // logger tag
-  private static final String TAG = "cordova-plugin-health";
 
-  // calling activity
-  private CordovaInterface cordova;
+    /**
+     * Tag used in logs
+     */
+    public static String TAG = "cordova-plugin-health";
 
-  // instance of the call back when requesting or checking authorisation
-  private CallbackContext authReqCallbackCtx;
-  private static final int REQUEST_DYN_PERMS = 2;
+    /**
+     * Callback context, reference needed when used in functions initialized before the plugin is called
+     */
+    private CallbackContext callbackContext;
 
-  private final HashSet<String> authReadTypes = new HashSet<>();
-  private final HashSet<String> authReadWriteTypes = new HashSet<>();
+    /**
+     * API client
+     */
+    private HealthConnectClient healthConnectClient;
 
+    /**
+     * Used to get permissions
+     */
+    ActivityResultLauncher permissionsLauncher;
 
-  private HealthConnectClient healthClient;
-  private ActivityResultLauncher requestPermissionLauncher;
-
-  private Set<String> requestedPermissions = new HashSet<>();
-
-  public HealthPlugin() {
-  }
-
-  void onNewPermissionResult(Set<String> granted) {
-    if (granted.size() == 0) {
-      return;
-    }
-    if (granted.containsAll(requestedPermissions)) {
-      // Permissions successfully granted
-      authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
-    } else {
-      // Lack of required permissions
-      authReqCallbackCtx.error("Not all permissions not granted");
-    }
-  }
-
-  public void safeInitClient() {
-    if (healthClient != null) return;
-    try {
-      healthClient = HealthConnectClient.getOrCreate(cordova.getContext());
-    } catch (Exception err) {
-      err.printStackTrace();
-    }
-  }
-
-  // general initialization
-  @Override
-  public void initialize(CordovaInterface cordova, CordovaWebView webView) {
-
-    super.initialize(cordova, webView);
-    this.cordova = cordova;
-    safeInitClient();
-
-    ActivityResultContract requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract();
-    requestPermissionLauncher = this.cordova.getActivity().registerForActivityResult(requestPermissionActivityContract, new ActivityResultCallback<Set<String>>() {
-      @Override
-      public void onActivityResult(Set<String> granted) {
-        onNewPermissionResult(granted);
-      }
-    });
-
-  }
-
-  // called once custom data types have been created
-  // asks for dynamic permissions on Android 6 and more
-  private void requestDynamicPermissions() {
-    safeInitClient();
-    requestedPermissions = new HashSet<>();
-
-    for (String authReadType : authReadTypes) {
-      requestedPermissions.add(HealthPermission.getReadPermission(HealthDataConvertor.getDataType(authReadType)));
-    }
-    for (String authReadType : authReadWriteTypes) {
-      requestedPermissions.add(HealthPermission.getReadPermission(HealthDataConvertor.getDataType(authReadType)));
-      requestedPermissions.add(HealthPermission.getWritePermission(HealthDataConvertor.getDataType(authReadType)));
+    /**
+     * Constructor
+     */
+    public HealthPlugin() {
     }
 
-    try {
-      Set<String> grantedPermissions = BuildersKt.runBlocking(
-        EmptyCoroutineContext.INSTANCE,
-        (s, c) -> healthClient.getPermissionController().getGrantedPermissions(c)
-      );
-      if (grantedPermissions.containsAll(requestedPermissions)) {
-        // Permissions successfully granted
-        authReqCallbackCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
-      } else {
-        // Lack of required permissions
-        requestPermissionLauncher.launch(requestedPermissions);
-      }
+    @Override
+    public void initialize(CordovaInterface cordova, CordovaWebView webView) {
+        super.initialize(cordova, webView);
 
-    } catch (Exception e) {
-      e.printStackTrace();
-      authReqCallbackCtx.error("Error while requesting permissions");
-    }
-  }
-
-  // called when the dynamic permissions are asked
-  @Override
-  public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) throws JSONException {
-    if (requestCode == REQUEST_DYN_PERMS) {
-      for (int grantResult : grantResults) {
-        if (grantResult == PackageManager.PERMISSION_DENIED) {
-          StringBuilder errMsg = new StringBuilder("Permission denied ");
-          for (String perm : permissions) {
-            errMsg.append(" ").append(perm).append("\n");
-          }
-          authReqCallbackCtx.error("Permission denied: " + errMsg);
-          return;
-        }
-      }
-      // all dynamic permissions accepted!
-      Log.i(TAG, "All dynamic permissions accepted");
-    }
-  }
-
-  /**
-   * The "execute" method that Cordova calls whenever the plugin is used from the JavaScript
-   *
-   * @param action          The action to execute.
-   * @param args            The exec() arguments.
-   * @param callbackContext The callback context used when calling back into JavaScript.
-   * @return boolean
-   */
-  @Override
-  public boolean execute(String action, final JSONArray args, final CallbackContext callbackContext) throws JSONException {
-
-    if ("isAvailable".equals(action)) {
-      isAvailable(callbackContext);
-      return true;
-    } else if ("promptInstallFit".equals(action)) {
-      promptInstall(callbackContext);
-      return true;
-    } else if ("requestAuthorization".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          checkAuthorization(args, callbackContext); // with autoresolve
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("checkAuthorization".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          checkAuthorization(args, callbackContext); // without autoresolve
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("isAuthorized".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          checkAuthorization(args, callbackContext); // without autoresolve
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("query".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          query(args, callbackContext);
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("queryAggregated".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          queryAggregated(args, callbackContext);
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("store".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          store(args, callbackContext);
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    } else if ("delete".equals(action)) {
-      cordova.getThreadPool().execute(() -> {
-        try {
-          delete(args, callbackContext);
-        } catch (Exception ex) {
-          callbackContext.error(ex.getMessage());
-        }
-      });
-      return true;
-    }
-
-    return false;
-  }
-
-  // detects if a) Google APIs are available, b) Google Fit is actually installed
-  private void isAvailable(final CallbackContext callbackContext) {
-      int status = HealthConnectClient.getSdkStatus(this.cordova.getActivity().getApplicationContext());
-      PluginResult.Status pluginResult = PluginResult.Status.OK;
-      if (status == HealthConnectClient.SDK_AVAILABLE) {
-        Log.d(TAG, "HealthConnectClient available");
-        PluginResult result;
-        result = new PluginResult(pluginResult, true);
-        callbackContext.sendPluginResult(result);
-        return;
-      } else if (status == HealthConnectClient.SDK_UNAVAILABLE) {
-        Log.d(TAG, "HealthConnectClient unavailable");
-//        pluginResult = PluginResult.Status.ERROR;
-      } else if (status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
-        Log.d(TAG, "HealthConnectClient unavailable provider update required");
-//        pluginResult = PluginResult.Status.ERROR;
-      }
-    PluginResult result;
-    result = new PluginResult(pluginResult, false);
-    callbackContext.sendPluginResult(result);
-  }
-
-  // prompts to install GooglePlayServices if not available then Google Fit if not available
-  private void promptInstall(final CallbackContext callbackContext) {
-    PackageManager pm = cordova.getActivity().getApplicationContext().getPackageManager();
-    try {
-      pm.getPackageInfo("com.google.android.apps.healthdata", PackageManager.GET_ACTIVITIES);
-    } catch (PackageManager.NameNotFoundException e) {
-      // show popup for downloading app
-      // code from http://stackoverflow.com/questions/11753000/how-to-open-the-google-play-store-directly-from-my-android-application
-      try {
-        cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")));
-      } catch (android.content.ActivityNotFoundException anfe) {
-        cordova.getActivity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata")));
-      }
-    }
-  }
-
-  // check if the app is authorised to use Google fitness APIs
-  // if autoresolve is set, it will try to get authorisation from the user
-  // also includes some OS dynamic permissions if needed (eg location)
-  private void checkAuthorization(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
-    this.cordova.setActivityResultCallback(this);
-    authReqCallbackCtx = callbackContext;
-
-    // build the read and read-write sets
-    authReadTypes.clear();
-    authReadWriteTypes.clear();
-
-    for (int i = 0; i < args.length(); i++) {
-      Object object = args.get(i);
-      if (object instanceof JSONObject) {
-        JSONObject readWriteObj = (JSONObject) object;
-        if (readWriteObj.has("read")) {
-          JSONArray readArray = readWriteObj.getJSONArray("read");
-          for (int j = 0; j < readArray.length(); j++) {
-            authReadTypes.add(readArray.getString(j));
-          }
-        }
-        if (readWriteObj.has("write")) {
-          JSONArray writeArray = readWriteObj.getJSONArray("write");
-          for (int j = 0; j < writeArray.length(); j++) {
-            authReadWriteTypes.add(writeArray.getString(j));
-          }
-        }
-      } else if (object instanceof String) {
-        authReadWriteTypes.add(String.valueOf(object));
-      }
-    }
-    authReadTypes.removeAll(authReadWriteTypes);
-
-    // now ask for dynamic permissiions
-    requestDynamicPermissions();
-  }
-
-  private void queryRawData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered, final int limit,
-                            final Set<DataOrigin> dataOrigins ) {
-    safeInitClient();
-    final KClass dt = HealthDataConvertor.getDataType(datatype);
-    final Instant startInstant = Instant.ofEpochMilli(st);
-    final Instant endInstant = Instant.ofEpochMilli(et);
-
-    ReadRecordsRequest readRecordsRequest = new ReadRecordsRequest(
-      dt,
-      TimeRangeFilter.between(startInstant, endInstant),
-      dataOrigins,
-      true,
-      limit,
-      null
-
-    );
-    try {
-      ReadRecordsResponse<Record> readResponse = BuildersKt.runBlocking(
-        EmptyCoroutineContext.INSTANCE,
-        (s, c) ->  healthClient.readRecords(readRecordsRequest, c)
-      );
-      List<androidx.health.connect.client.records.Record> records = readResponse.getRecords();
-      JSONArray resultSet = new JSONArray();
-      for (androidx.health.connect.client.records.Record record : records) {
-        JSONObject data = HealthDataConvertor.parseRecordForType(record, datatype, filtered);
-        if (data != null) {
-          if (datatype.equals("activity")) {
-            try {
-              ExerciseSessionRecord exerciseSessionRecord = (ExerciseSessionRecord) record;
-              ReadRecordsRequest<DistanceRecord> distanceRequest = new ReadRecordsRequest<DistanceRecord>(
-                HealthDataConvertor.getDataType("distance"),
-                TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
-                dataOrigins,
-                true,
-                limit,
-                null
-                );
-              double totalDistance = 0;
-              ReadRecordsResponse<DistanceRecord> distanceRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(distanceRequest, continuation));
-              for (DistanceRecord distance : distanceRecord.getRecords()) {
-                totalDistance += distance.getDistance().getMeters();
-              }
-              data.put("distance", totalDistance);
-              ReadRecordsRequest<TotalCaloriesBurnedRecord> caloriesRequest = new ReadRecordsRequest<TotalCaloriesBurnedRecord>(
-                HealthDataConvertor.getDataType("calories"),
-                TimeRangeFilter.between(exerciseSessionRecord.getStartTime(), exerciseSessionRecord.getEndTime()),
-                dataOrigins,
-                true,
-                limit,
-                null
-                );
-              double totalCalories = 0;
-              ReadRecordsResponse<TotalCaloriesBurnedRecord> caloriesRecord = BuildersKt.runBlocking(EmptyCoroutineContext.INSTANCE, (scope, continuation) -> healthClient.readRecords(caloriesRequest, continuation));
-              for (TotalCaloriesBurnedRecord calories : caloriesRecord.getRecords()) {
-                totalCalories += calories.getEnergy().getKilocalories();
-              }
-              data.put("calories", totalCalories);
-            } catch (Exception e) {
-              e.printStackTrace();
+        ActivityResultContract<Set<String>, Set<String>> requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract();
+        permissionsLauncher = cordova.getActivity().registerForActivityResult(requestPermissionActivityContract, new ActivityResultCallback<Set<String>>() {
+            @Override
+            public void onActivityResult(Set<String> result) {
+                Log.d(TAG, "got results from authorization request");
+                if (callbackContext != null) {
+                    for (String res : result) {
+                        LOG.d(TAG, res);
+                    }
+                    if (result.isEmpty()) {
+                        callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, false));
+                    } else {
+                        callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
+                    }
+                } else {
+                    LOG.e(TAG, "Got activity results before callback was created");
+                }
             }
-          }
-          resultSet.put(data);
-        }
-      }
-      callbackContext.success(resultSet);
-    } catch (Exception e) {
-      e.printStackTrace();
-      callbackContext.error(e.getMessage());
+        });
     }
-  }
 
-  void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
-                           final Set<DataOrigin> dataOrigins) {
-    safeInitClient();
-    final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
-    final Instant startInstant = Instant.ofEpochMilli(st);
-    final Instant endInstant = Instant.ofEpochMilli(et);
 
-    AggregateRequest aggregateRequest = new AggregateRequest(
-      metrics,
-      TimeRangeFilter.between(startInstant, endInstant),
-      dataOrigins
-    );
-
-    try {
-        AggregationResult result = BuildersKt.runBlocking(
-          EmptyCoroutineContext.INSTANCE,
-          (s, c) ->  healthClient.aggregate(aggregateRequest, c)
-        );
-        JSONArray resultSet = new JSONArray();
-        resultSet.put(HealthDataConvertor.parseAggregationResultForType(result, datatype, filtered));
-        callbackContext.success(resultSet);
-      } catch (Exception e) {
-        e.printStackTrace();
-        callbackContext.error(e.getMessage());
-      }
-  }
-
-  void queryAggregatedData(final CallbackContext callbackContext, final String datatype, final long st, final long et, final boolean filtered,
-                           final Set<DataOrigin> dataOrigins, String bucketType) {
-    safeInitClient();
-    final Set<AggregateMetric<?>> metrics = HealthDataConvertor.getAggregateMetricsForDataType(datatype);
-    final Instant startInstant = Instant.ofEpochMilli(st);
-    final Instant endInstant = Instant.ofEpochMilli(et);
-
-    if (bucketType.equalsIgnoreCase("minute") || bucketType.equalsIgnoreCase("hour")) {
-      Duration duration = Duration.ofHours(1);
-      if (bucketType.equalsIgnoreCase("minute")) {
-        duration = Duration.ofMinutes(1);
-      }
-
-      AggregateGroupByDurationRequest aggregateRequest = new AggregateGroupByDurationRequest(
-        (Set<? extends AggregateMetric<?>>) metrics,
-        TimeRangeFilter.between(startInstant, endInstant),
-        duration,
-        dataOrigins
-      );
-
-      try {
-        List<AggregationResultGroupedByDuration> results = BuildersKt.runBlocking(
-          EmptyCoroutineContext.INSTANCE,
-          (s, c) -> healthClient.aggregateGroupByDuration(aggregateRequest, c)
-        );
-          JSONArray resultSet = new JSONArray();
-          for (AggregationResultGroupedByDuration aggregationResultGroupedByDuration : results) {
-            JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
-            try {
-              obj.put("startDate", aggregationResultGroupedByDuration.getStartTime().toEpochMilli());
-              obj.put("endDate", aggregationResultGroupedByDuration.getEndTime().toEpochMilli());
-            } catch (JSONException e) {
-              e.printStackTrace();
+    /**
+     * Executes the request.
+     *
+     * @param action          the action to execute.
+     * @param args            the exec() arguments.
+     * @param callbackContext the callback context used when calling back into JavaScript.
+     * @return whether the action was valid.
+     */
+    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) {
+        this.callbackContext = callbackContext;
+        if (action.equals("isAvailable")) {
+            int availabilityStatus = HealthConnectClient.getSdkStatus(this.cordova.getContext());
+            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
+                callbackContext.error("Health Connect is not available");
+                return true;
             }
-            resultSet.put(obj);
-          }
+            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+                callbackContext.error("Health Connect is not installed");
+                return true;
+            }
 
-          callbackContext.success(resultSet);
+            callbackContext.success();
+        } else if (action.equals("getHealthConnectFromStore")) {
+            String uriString =
+                    "market://details?id=$providerPackageName&url=healthconnect%3A%2F%2Fonboarding";
+            Intent launchAppStore = new Intent(Intent.ACTION_VIEW);
+            launchAppStore.setPackage("com.android.vending");
+            launchAppStore.setData(Uri.parse(uriString));
+            launchAppStore.putExtra("overlay", true);
+            launchAppStore.putExtra("callerId", this.cordova.getContext().getPackageName());
+            this.cordova.getContext().startActivity(launchAppStore);
+
+            callbackContext.success();
+        } else if (action.equals("launchPrivacyPolicy")) {
+            Activity currentActivity = this.cordova.getActivity();
+            Intent activityIntent = new Intent(currentActivity, PermissionsRationaleActivity.class);
+            currentActivity.startActivity(activityIntent);
+            callbackContext.success();
+        } else if (action.equals("openHealthSettings")) {
+            Activity currentActivity = this.cordova.getActivity();
+            Intent activityIntent =  new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
+            currentActivity.startActivity(activityIntent);
+            callbackContext.success();
+        } else if ("isAuthorized".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    checkAuthorization(args, false);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("requestAuthorization".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    checkAuthorization(args, true);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("query".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    query(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("queryAggregated".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    queryAggregated(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("store".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    store(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("delete".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    delete(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else {
+            // Unsupported action
+            return false;
         }
-        catch (Exception e) {
-          e.printStackTrace();
-          callbackContext.error(e.getMessage());
+        return true;
+    }
+
+    /**
+     * Connects to the HealthConnect API
+     */
+    private void connectAPI() {
+        if (healthConnectClient == null) {
+            healthConnectClient = HealthConnectClient.getOrCreate(cordova.getContext());
         }
-    } else if (bucketType.equalsIgnoreCase("day") || bucketType.equalsIgnoreCase("week") || bucketType.equalsIgnoreCase("month") || bucketType.equalsIgnoreCase("year")) {
-      Period period = Period.ofDays(1);
-      if (bucketType.equalsIgnoreCase("week")) {
-        period = Period.ofWeeks(1);
-      } else if (bucketType.equalsIgnoreCase("month")) {
-        period = Period.ofMonths(1);
-      } else if (bucketType.equalsIgnoreCase("year")) {
-        period = Period.ofYears(1);
-      }
-      LocalDateTime startLocalTime =
-        LocalDateTime.ofInstant(Instant.ofEpochMilli(st), ZoneId.systemDefault());
-      LocalDateTime endLocalTime =
-        LocalDateTime.ofInstant(Instant.ofEpochMilli(et), ZoneId.systemDefault());
-      AggregateGroupByPeriodRequest aggregateRequest = new AggregateGroupByPeriodRequest(
-        (Set<? extends AggregateMetric<?>>) metrics,
-        TimeRangeFilter.between(startLocalTime, endLocalTime),
-        period,
-        dataOrigins
-      );
+    }
 
-      try {
-        List<AggregationResultGroupedByPeriod> results = BuildersKt.runBlocking(
-          EmptyCoroutineContext.INSTANCE,
-          (s, c) -> healthClient.aggregateGroupByPeriod(aggregateRequest, c)
-        );
-        JSONArray resultSet = new JSONArray();
-        for (AggregationResultGroupedByPeriod aggregationResultGroupedByDuration : results) {
-          JSONObject obj = HealthDataConvertor.parseAggregationResultForType(aggregationResultGroupedByDuration.getResult(), datatype, filtered);
-          try {
-            obj.put("startDate", aggregationResultGroupedByDuration.getStartTime());
-            obj.put("endDate", aggregationResultGroupedByDuration.getEndTime());
-          } catch (JSONException e) {
-            e.printStackTrace();
-          }
-          resultSet.put(obj);
+
+    // DATA_TYPE add here when supporting new ones
+    private KClass<? extends androidx.health.connect.client.records.Record> dataTypeNameToClass(String name) {
+        if (name.equalsIgnoreCase("steps")) {
+            return StepsFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("weight")) {
+            return WeightFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("fat_percentage")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(BodyFatRecord.class);
+        }
+        if (name.equalsIgnoreCase("activity")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(ExerciseSessionRecord.class);
+        }
+        if (name.equalsIgnoreCase("calories")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(TotalCaloriesBurnedRecord.class);
+        }
+        if (name.equalsIgnoreCase("calories.active")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(ActiveCaloriesBurnedRecord.class);
+        }
+        if (name.equalsIgnoreCase("calories.basal")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(BasalMetabolicRateRecord.class);
+        }
+        if (name.equalsIgnoreCase("blood_glucose")) {
+            return BloodGlucoseFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("distance")) {
+            return kotlin.jvm.JvmClassMappingKt.getKotlinClass(DistanceRecord.class);
+        }
+        if (name.equalsIgnoreCase("height")) {
+            return HeightFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("sleep")) {
+            return SleepFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("heart_rate")) {
+            return HeartRateFunctions.dataTypeToClass();
         }
 
-        callbackContext.success(resultSet);
-      } catch (Exception e) {
-        e.printStackTrace();
-        callbackContext.error(e.getMessage());
-      }
+        return null;
     }
 
-  }
+    /**
+     * Checks if permissions have been granted, if request is true, permissions are also requested
+     *
+     * @param args    json array coming from the plugin
+     * @param request if true also requests permissions
+     */
+    private void checkAuthorization(final JSONArray args, boolean request) {
+        try {
+            Log.d(TAG, "checking authorization");
+            JSONObject readWriteObj = args.getJSONObject(0);
+
+            // see https://kt.academy/article/cc-other-languages
+            Set<String> grantedPermissions = BuildersKt.runBlocking(
+                    EmptyCoroutineContext.INSTANCE,
+                    (s, c) -> healthConnectClient.getPermissionController().getGrantedPermissions(c)
+            );
+
+            Set<String> permissionsToRequest = new HashSet<>();
+
+            if (readWriteObj.has("read")) {
+                JSONArray readArray = readWriteObj.getJSONArray("read");
+                for (int j = 0; j < readArray.length(); j++) {
+                    String dataTypeStr = readArray.getString(j);
+                    KClass<? extends Record> datatype = dataTypeNameToClass(dataTypeStr);
+                    if (datatype == null) {
+                        callbackContext.error("Data type not supported " + dataTypeStr);
+                        return;
+                    }
+                    String perm = HealthPermission.getReadPermission(datatype);
+                    if (!grantedPermissions.contains(perm)) {
+                        if (request) {
+                            permissionsToRequest.add(perm);
+                        } else {
+                            callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, false));
+                            return;
+                        }
+                    }
+                }
+            }
+            if (readWriteObj.has("write")) {
+                JSONArray writeArray = readWriteObj.getJSONArray("write");
+                for (int j = 0; j < writeArray.length(); j++) {
+                    String dataTypeStr = writeArray.getString(j);
+                    KClass<? extends Record> datatype = dataTypeNameToClass(dataTypeStr);
+                    if (datatype == null) {
+                        callbackContext.error("Data type not supported " + dataTypeStr);
+                        return;
+                    }
+                    String perm = HealthPermission.getWritePermission(datatype);
+                    if (!grantedPermissions.contains(perm)) {
+                        if (request) {
+                            permissionsToRequest.add(perm);
+                        } else {
+                            callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, false));
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (request && !permissionsToRequest.isEmpty()) {
+                Log.d(TAG, "requesting authorization");
+                permissionsLauncher.launch(permissionsToRequest);
+            } else {
+                callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
+            }
+        } catch (JSONException ex) {
+            callbackContext.error("Cannot read request object" + ex.getMessage());
+        } catch (InterruptedException ex2) {
+            callbackContext.error("Thread interrupted" + ex2.getMessage());
+        }
+    }
 
 
+    protected static void populateFromMeta(JSONObject obj, Metadata meta) throws JSONException {
+        String id = meta.getId();
+        if (id != null) {
+            obj.put("id", id);
+        }
 
-  // queries for datapoints
-  private void query(final JSONArray args, final CallbackContext callbackContext) throws Exception {
-    if (!args.getJSONObject(0).has("startDate")) {
-      callbackContext.error("Missing argument startDate");
-      return;
-    }
-    long st = args.getJSONObject(0).getLong("startDate");
-    if (!args.getJSONObject(0).has("endDate")) {
-      callbackContext.error("Missing argument endDate");
-      return;
-    }
-    long et = args.getJSONObject(0).getLong("endDate");
-    if (!args.getJSONObject(0).has("dataType")) {
-      callbackContext.error("Missing argument dataType");
-      return;
-    }
-    String datatype = args.getJSONObject(0).getString("dataType");
-    boolean filtered = args.getJSONObject(0).has("filtered") && args.getJSONObject(0).getBoolean("filtered");
+        Device dev = meta.getDevice();
+        if (dev != null) {
+            String device = "";
+            String manufacturer = dev.getManufacturer();
+            String model = dev.getModel();
+            if (manufacturer != null || model != null) {
+                obj.put("sourceDevice", manufacturer + " " + model);
+            }
+        }
 
-    boolean includeCalsAndDist = false;
-    if (args.getJSONObject(0).has("includeCalsAndDist")) {
-      includeCalsAndDist = args.getJSONObject(0).getBoolean("includeCalsAndDist");
-    }
+        DataOrigin origin = meta.getDataOrigin();
+        if (origin != null) {
+            obj.put("sourceBundleId", origin.getPackageName());
+        }
 
-    Integer limit = 1000;
-    Set<DataOrigin> dataOrigins = new HashSet<>();
-    if (args.getJSONObject(0).has("limit")) {
-      limit = args.getJSONObject(0).getInt("limit");
-    }
-
-//    if (HealthDataConvertor.getAggregateMetricsForDataType(datatype) != null ) {
-//      queryAggregatedData(callbackContext, datatype, st, et, filtered, dataOrigins);
-//      return;
-//    }
-
-    if (HealthDataConvertor.getDataType(datatype) != null) {
-      queryRawData(callbackContext, datatype, st, et, filtered, limit, dataOrigins);
-      return;
+        int methodInt = meta.getRecordingMethod();
+        String method = "unknown";
+        switch (methodInt) {
+            case 1:
+                method = "actively_recorded";
+                break;
+            case 2:
+                method = "automatically_recorded";
+                break;
+            case 3:
+                method = "manual_entry";
+                break;
+        }
+        obj.put("entryMethod", method);
     }
 
-    callbackContext.error("Datatype " + datatype + " not supported");
-  }
+    private void query(final JSONArray args) {
 
-  // queries and aggregates data
-  private void queryAggregated(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
-    if (!args.getJSONObject(0).has("startDate")) {
-      callbackContext.error("Missing argument startDate");
-      return;
-    }
-    long st = args.getJSONObject(0).getLong("startDate");
-    if (!args.getJSONObject(0).has("endDate")) {
-      callbackContext.error("Missing argument endDate");
-      return;
-    }
-    long et = args.getJSONObject(0).getLong("endDate");
-    long _et = et; // keep track of the original end time, needed for basal calories
-    if (!args.getJSONObject(0).has("dataType")) {
-      callbackContext.error("Missing argument dataType");
-      return;
-    }
-    String datatype = args.getJSONObject(0).getString("dataType");
+        try {
+            if (!args.getJSONObject(0).has("startDate")) {
+                callbackContext.error("Missing argument startDate");
+                return;
+            }
+            long st = args.getJSONObject(0).getLong("startDate");
+            if (!args.getJSONObject(0).has("endDate")) {
+                callbackContext.error("Missing argument endDate");
+                return;
+            }
+            long et = args.getJSONObject(0).getLong("endDate");
+            if (!args.getJSONObject(0).has("dataType")) {
+                callbackContext.error("Missing argument dataType");
+                return;
+            }
+            String datatype = args.getJSONObject(0).getString("dataType");
+            KClass<? extends Record> dt = dataTypeNameToClass(datatype);
+            if (dt == null) {
+                callbackContext.error("Datatype " + datatype + " not supported");
+                return;
+            }
 
-    boolean includeCalsAndDist = false;
-    if (args.getJSONObject(0).has("includeCalsAndDist")) {
-      includeCalsAndDist = args.getJSONObject(0).getBoolean("includeCalsAndDist");
-    }
-    boolean hasbucket = args.getJSONObject(0).has("bucket");
-    boolean customBucket = false;
-    String bucketType = "";
+            int limit = 1000;
+            if (args.getJSONObject(0).has("limit")) {
+                limit = args.getJSONObject(0).getInt("limit");
+            }
+            boolean ascending = false;
+            if (args.getJSONObject(0).has("ascending")) {
+                ascending = args.getJSONObject(0).getBoolean("ascending");
+            }
 
-    if (hasbucket) {
-      bucketType = args.getJSONObject(0).getString("bucket");
-      queryAggregatedData(callbackContext, datatype, st, et, false, new HashSet<DataOrigin>(), bucketType);
-    } else {
-      queryAggregatedData(callbackContext, datatype, st, et, false, new HashSet<DataOrigin>());
-    }
-  }
+            // special flags:
+            boolean keepSession = false;
+            if (args.getJSONObject(0).has("sleepSession")) {
+                keepSession = args.getJSONObject(0).getBoolean("sleepSession");
+            }
+
+            if (this.healthConnectClient == null) {
+                callbackContext.error("You must call requestAuthorization() before query()");
+                return;
+            }
 
 
-  // stores a data point
-  private void store(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
-    safeInitClient();
-    if (!args.getJSONObject(0).has("startDate")) {
-      callbackContext.error("Missing argument startDate");
-      return;
-    }
-    long st = args.getJSONObject(0).getLong("startDate");
-    if (!args.getJSONObject(0).has("endDate")) {
-      callbackContext.error("Missing argument endDate");
-      return;
-    }
-    long et = args.getJSONObject(0).getLong("endDate");
-    if (!args.getJSONObject(0).has("dataType")) {
-      callbackContext.error("Missing argument dataType");
-      return;
-    }
-    String datatype = args.getJSONObject(0).getString("dataType");
-    if (!args.getJSONObject(0).has("value")) {
-      callbackContext.error("Missing argument value");
-      return;
-    }
-    String value = args.getJSONObject(0).getString("value");
-    if (!args.getJSONObject(0).has("value")) {
-      callbackContext.error("Missing argument value");
-      return;
+            TimeRangeFilter timeRange = TimeRangeFilter.between(Instant.ofEpochMilli(st), Instant.ofEpochMilli(et));
+            HashSet<DataOrigin> dor = new HashSet<>();
+            ReadRecordsRequest request = new ReadRecordsRequest(dt, timeRange, dor, ascending, limit, null);
+            // see https://kt.academy/article/cc-other-languages
+            ReadRecordsResponse response = BuildersKt.runBlocking(
+                    EmptyCoroutineContext.INSTANCE,
+                    (s, c) -> healthConnectClient.readRecords(request, c)
+            );
+
+            Log.d(TAG, "Data query successful");
+            JSONArray resultset = new JSONArray();
+            // default behaviour is that each record corresponds to one element in the array, but there can be exceptions
+            boolean oneElementPerRecord = true;
+
+            for (Object datapointObj : response.getRecords()) {
+                if (datapointObj instanceof androidx.health.connect.client.records.Record) {
+                    androidx.health.connect.client.records.Record datapoint = (androidx.health.connect.client.records.Record) datapointObj;
+                    JSONObject obj = new JSONObject();
+
+                    populateFromMeta(obj, datapoint.getMetadata());
+
+                    // DATA_TYPES here we need to add support for each different data type
+                    if (datapoint instanceof StepsRecord) {
+                        StepsFunctions.populateFromQuery(datapoint, obj);
+                    } else if (datapoint instanceof WeightRecord) {
+                        WeightFunctions.populateFromQuery(datapoint, obj);
+                    } else if (datapoint instanceof HeightRecord) {
+                        HeightFunctions.populateFromQuery(datapoint, obj);
+                    } else if (datapoint instanceof BodyFatRecord) {
+                        BodyFatRecord bodyFatDP = (BodyFatRecord) datapoint;
+                        obj.put("startDate", bodyFatDP.getTime().toEpochMilli());
+                        obj.put("endDate", bodyFatDP.getTime().toEpochMilli());
+
+                        double perc = bodyFatDP.getPercentage().getValue();
+                        obj.put("value", perc);
+                        obj.put("unit", "%");
+                    } else if (datapoint instanceof ExerciseSessionRecord) {
+                        ExerciseSessionRecord activityDP = (ExerciseSessionRecord) datapoint;
+                        obj.put("startDate", activityDP.getStartTime().toEpochMilli());
+                        obj.put("endDate", activityDP.getEndTime().toEpochMilli());
+
+                        int exType = activityDP.getExerciseType();
+                        String activityStr = ActivityMapper.activityFromExerciseType(exType);
+
+                        obj.put("value", activityStr);
+                        obj.put("unit", "activityType");
+                    } else if (datapoint instanceof TotalCaloriesBurnedRecord) {
+                        TotalCaloriesBurnedRecord caloriesDP = (TotalCaloriesBurnedRecord) datapoint;
+                        obj.put("startDate", caloriesDP.getStartTime().toEpochMilli());
+                        obj.put("endDate", caloriesDP.getEndTime().toEpochMilli());
+
+                        double kcals = caloriesDP.getEnergy().getKilocalories();
+
+                        obj.put("value", kcals);
+                        obj.put("unit", "kcal");
+                    } else if (datapoint instanceof ActiveCaloriesBurnedRecord) {
+                        ActiveCaloriesBurnedRecord caloriesDP = (ActiveCaloriesBurnedRecord) datapoint;
+                        obj.put("startDate", caloriesDP.getStartTime().toEpochMilli());
+                        obj.put("endDate", caloriesDP.getEndTime().toEpochMilli());
+
+                        double kcals = caloriesDP.getEnergy().getKilocalories();
+
+                        obj.put("value", kcals);
+                        obj.put("unit", "kcal");
+                    } else if (datapoint instanceof BasalMetabolicRateRecord) {
+                        BasalMetabolicRateRecord basalRateDP = (BasalMetabolicRateRecord) datapoint;
+                        obj.put("startDate", basalRateDP.getTime().toEpochMilli());
+                        obj.put("endDate", basalRateDP.getTime().toEpochMilli());
+
+                        Power pow = basalRateDP.getBasalMetabolicRate();
+                        if (pow != null) {
+                            obj.put("value", pow.getKilocaloriesPerDay());
+                            obj.put("unit", "kcal/day");
+                        }
+                    } else if (datapoint instanceof BloodGlucoseRecord) {
+                        BloodGlucoseFunctions.populateFromQuery(datapoint, obj);
+                    } else if (datapoint instanceof DistanceRecord) {
+                        DistanceRecord disanceR = (DistanceRecord) datapoint;
+                        obj.put("startDate", disanceR.getStartTime().toEpochMilli());
+                        obj.put("endDate", disanceR.getEndTime().toEpochMilli());
+
+                        double meters = disanceR.getDistance().getMeters();
+
+                        obj.put("value", meters);
+                        obj.put("unit", "m");
+                    } else if (datapoint instanceof SleepSessionRecord) {
+                        oneElementPerRecord = keepSession; // flag it, so we don't add empty objs later
+                        SleepFunctions.populateFromQuery(datapoint, obj, resultset, keepSession);
+                    } else if (datapoint instanceof HeartRateRecord) {
+                        oneElementPerRecord = false; // bpms are sent individually
+                        HeartRateFunctions.populateFromQuery(datapoint, resultset);
+                    } else {
+                        callbackContext.error("Sample received of unknown type " + datatype.toString());
+                        return;
+                    }
+
+                    // add to result array
+                    if (oneElementPerRecord){
+                        resultset.put(obj);
+                    }
+                } else {
+                    Log.e(TAG, "Unrecognized type for record " + datapointObj.getClass());
+                }
+            }
+            // done:
+            callbackContext.success(resultset);
+        } catch (JSONException ex) {
+            Log.e(TAG, "Could not parse query object", ex);
+            callbackContext.error("Could not parse query object");
+        } catch (InterruptedException ex2) {
+            Log.e(TAG, "Thread interrupted", ex2);
+            callbackContext.error("Thread interrupted" + ex2.getMessage());
+        }
     }
 
-    String sourceBundleId = cordova.getActivity().getApplicationContext().getPackageName();
-    if (args.getJSONObject(0).has("sourceBundleId")) {
-      sourceBundleId = args.getJSONObject(0).getString("sourceBundleId");
-    }
-    ArrayList<Record> records = new ArrayList<>();
-    records.add(HealthDataConvertor.createRecord(datatype, value, sourceBundleId,st, et));
-    try {
-      InsertRecordsResponse response = BuildersKt.runBlocking(
-        EmptyCoroutineContext.INSTANCE,
-        (s, c) -> healthClient.insertRecords(records, c)
-      );
-      callbackContext.success();
-    } catch (Exception e) {
-      e.printStackTrace();
-      callbackContext.error(e.getMessage());
-    }
-  }
+    private void queryAggregated(final JSONArray args) {
+        try {
+            if (!args.getJSONObject(0).has("startDate")) {
+                callbackContext.error("Missing argument startDate");
+                return;
+            }
+            long st = args.getJSONObject(0).getLong("startDate");
 
-  // deletes data points in a given time window
-  private void delete(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
-    safeInitClient();
-    if (!args.getJSONObject(0).has("startDate")) {
-      callbackContext.error("Missing argument startDate");
-      return;
-    }
-    final long st = args.getJSONObject(0).getLong("startDate");
-    if (!args.getJSONObject(0).has("endDate")) {
-      callbackContext.error("Missing argument endDate");
-      return;
-    }
-    final long et = args.getJSONObject(0).getLong("endDate");
-    if (!args.getJSONObject(0).has("dataType")) {
-      callbackContext.error("Missing argument dataType");
-      return;
-    }
-    final String datatype = args.getJSONObject(0).getString("dataType");
+            if (!args.getJSONObject(0).has("endDate")) {
+                callbackContext.error("Missing argument endDate");
+                return;
+            }
+            long et = args.getJSONObject(0).getLong("endDate");
 
-    final KClass dt = HealthDataConvertor.getDataType(datatype);
-    if (dt == null) {
-      callbackContext.error("Datatype " + datatype + " not supported");
+            if (!args.getJSONObject(0).has("dataType")) {
+                callbackContext.error("Missing argument dataType");
+                return;
+            }
+            String datatype = args.getJSONObject(0).getString("dataType");
+            KClass<? extends Record> dt = dataTypeNameToClass(datatype);
+            if (dt == null) {
+                callbackContext.error("Datatype " + datatype + " not supported");
+                return;
+            }
+
+            boolean hasbucket = args.getJSONObject(0).has("bucket");
+
+            HashSet<DataOrigin> dor = new HashSet<>();
+
+            if (hasbucket) {
+                String bucketType = args.getJSONObject(0).getString("bucket");
+                ZonedDateTime stZDT = ZonedDateTime.ofInstant(Instant.ofEpochMilli(st), ZoneId.systemDefault());
+                ZonedDateTime etZDT = ZonedDateTime.ofInstant(Instant.ofEpochMilli(et), ZoneId.systemDefault());
+                // reset unused fields
+                // int year, Month month, int dayOfMonth, int hour, int minute, int second
+                LocalDateTime stLDT;
+                LocalDateTime etLDT = LocalDateTime.from(etZDT);
+                if (bucketType.equalsIgnoreCase("hour")) {
+                    stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), stZDT.getDayOfMonth(), stZDT.getHour(), 0, 0, 0);
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(), etZDT.getDayOfMonth(), etZDT.getHour(), 0, 0, 0);
+                } else if (bucketType.equalsIgnoreCase("day")) {
+                    stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), stZDT.getDayOfMonth(), 0, 0, 0, 0);
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(), etZDT.getDayOfMonth(), 0, 0, 0, 0);
+                } else if (bucketType.equalsIgnoreCase("week")) {
+                    DayOfWeek weekStart = DayOfWeek.MONDAY;
+                    stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), stZDT.getDayOfMonth(), 0, 0, 0, 0).with(TemporalAdjusters.previousOrSame(weekStart));
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(), etZDT.getDayOfMonth(), 0, 0, 0, 0).with(TemporalAdjusters.previousOrSame(weekStart));
+                } else if (bucketType.equalsIgnoreCase("month")) {
+                    stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), 1, 0, 0, 0, 0);
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(), 1, 0, 0, 0, 0);
+                } else if (bucketType.equalsIgnoreCase("year")) {
+                    stLDT = LocalDateTime.of(stZDT.getYear(), 1, 1, 0, 0, 0, 0);
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), 1, 1, 0, 0, 0, 0);
+                } else {
+                    callbackContext.error("Bucket not recognized " + bucketType);
+                    return;
+                }
+                TimeRangeFilter timeRange = TimeRangeFilter.between(stLDT, etLDT);
+
+                Duration duration = null;
+                Period period = null;
+                if (bucketType.equalsIgnoreCase("hour")) {
+                    duration = Duration.ofHours(1);
+                } else if (bucketType.equalsIgnoreCase("day")) {
+                    period = Period.ofDays(1);
+                } else if (bucketType.equalsIgnoreCase("week")) {
+                    period = Period.ofWeeks(1);
+                } else if (bucketType.equalsIgnoreCase("month")) {
+                    period = Period.ofMonths(1);
+                } else if (bucketType.equalsIgnoreCase("year")) {
+                    period = Period.ofYears(1);
+                } else {
+                    callbackContext.error("Bucket length not recognized " + bucketType);
+                    return;
+                }
+                if (period != null) {
+                    AggregateGroupByPeriodRequest request;
+                    // DATA_TYPE: add here support for new data types
+                    if (datatype.equalsIgnoreCase("steps")) {
+                        request = StepsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("weight")) {
+                        request = WeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("height")) {
+                        request = HeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("activity")) {
+                        Set<AggregateMetric<Duration>> metrics = new HashSet<>();
+                        metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("calories")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("calories.active")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("calories.basal")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
+                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("distance")) {
+                        Set<AggregateMetric<Length>> metrics = new HashSet<>();
+                        metrics.add(DistanceRecord.DISTANCE_TOTAL);
+                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("sleep")) {
+                        request = SleepFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("heart_rate")) {
+                        request = HeartRateFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else {
+                        callbackContext.error("Datatype not recognized " + datatype);
+                        return;
+                    }
+
+                    List<AggregationResultGroupedByPeriod> response = BuildersKt.runBlocking(
+                            EmptyCoroutineContext.INSTANCE,
+                            (s, c) -> healthConnectClient.aggregateGroupByPeriod(request, c)
+                    );
+
+                    Log.d(TAG, "Got data from query aggregated");
+                    JSONArray retBucketsArr = new JSONArray();
+
+                    for (AggregationResultGroupedByPeriod bucket : response) {
+                        JSONObject retObject = new JSONObject();
+                        long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                        long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                        retObject.put("startDate", stbkt);
+                        retObject.put("endDate", etbkt);
+                        setAggregatedVal(datatype, retObject, bucket.getResult());
+
+                        retBucketsArr.put(retObject);
+                    }
+
+                    callbackContext.success(retBucketsArr);
+                } else {
+                    AggregateGroupByDurationRequest request;
+                    // DATA_TYPE: add here support for new data types
+                    if (datatype.equalsIgnoreCase("steps")) {
+                        request = StepsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("weight")) {
+                        request = WeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("height")) {
+                        request = HeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("activity")) {
+                        Set<AggregateMetric<Duration>> metrics = new HashSet<>();
+                        metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("calories")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("calories.active")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("calories.basal")) {
+                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                        metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
+                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("distance")) {
+                        Set<AggregateMetric<Length>> metrics = new HashSet<>();
+                        metrics.add(DistanceRecord.DISTANCE_TOTAL);
+                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("sleep")) {
+                        request = SleepFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("heart_rate")) {
+                        request = HeartRateFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else {
+                        callbackContext.error("Datatype not recognized " + datatype);
+                        return;
+                    }
+
+                    List<AggregationResultGroupedByDuration> response = BuildersKt.runBlocking(
+                            EmptyCoroutineContext.INSTANCE,
+                            (s, c) -> healthConnectClient.aggregateGroupByDuration(request, c)
+                    );
+
+                    Log.d(TAG, "Got data from query aggregated");
+                    JSONArray retBucketsArr = new JSONArray();
+
+                    for (AggregationResultGroupedByDuration bucket : response) {
+                        JSONObject retObject = new JSONObject();
+                        long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                        long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                        retObject.put("startDate", stbkt);
+                        retObject.put("endDate", etbkt);
+                        setAggregatedVal(datatype, retObject, bucket.getResult());
+
+                        retBucketsArr.put(retObject);
+                    }
+
+                    callbackContext.success(retBucketsArr);
+                }
+            } else {
+                TimeRangeFilter timeRange = TimeRangeFilter.between(Instant.ofEpochMilli(st), Instant.ofEpochMilli(et));
+
+                AggregateRequest request;
+                // DATA_TYPE add here support for new data types
+                if (datatype.equalsIgnoreCase("steps")) {
+                    request = StepsFunctions.prepareAggregateRequest(timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("weight")) {
+                    request = WeightFunctions.prepareAggregateRequest(timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("height")) {
+                    request = HeightFunctions.prepareAggregateRequest(timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("activity")) {
+                    Set<AggregateMetric<Duration>> metrics = new HashSet<>();
+                    metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+                    request = new AggregateRequest(metrics, timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("calories")) {
+                    Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                    metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+                    request = new AggregateRequest(metrics, timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("calories.active")) {
+                    Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                    metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+                    request = new AggregateRequest(metrics, timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("calories.basal")) {
+                    Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+                    metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
+                    request = new AggregateRequest(metrics, timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("distance")) {
+                    Set<AggregateMetric<Length>> metrics = new HashSet<>();
+                    metrics.add(DistanceRecord.DISTANCE_TOTAL);
+                    request = new AggregateRequest(metrics, timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("sleep")) {
+                    request = SleepFunctions.prepareAggregateRequest(timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("heart_rate")) {
+                    request = HeartRateFunctions.prepareAggregateRequest(timeRange, dor);
+                } else {
+                    callbackContext.error("Datatype not recognized " + datatype);
+                    return;
+                }
+
+
+                AggregationResult response = BuildersKt.runBlocking(
+                        EmptyCoroutineContext.INSTANCE,
+                        (s, c) -> healthConnectClient.aggregate(request, c)
+                );
+                Log.d(TAG, "Got data from query aggregated");
+
+                JSONObject retObject = new JSONObject();
+                retObject.put("startDate", st);
+                retObject.put("endDate", et);
+                setAggregatedVal(datatype, retObject, response);
+
+                callbackContext.success(retObject);
+            }
+        } catch (JSONException ex) {
+            Log.e(TAG, "Could not parse query object or write response object", ex);
+            callbackContext.error("Could not parse query object or write response object");
+        } catch (InterruptedException ex2) {
+            Log.e(TAG, "Thread interrupted", ex2);
+            callbackContext.error("Thread interrupted" + ex2.getMessage());
+        }
     }
 
-    Instant start = Instant.ofEpochMilli(st);
-    Instant end = Instant.ofEpochMilli(et);
-    try {
-      BuildersKt.runBlocking(
-        EmptyCoroutineContext.INSTANCE,
-        (s, c) -> healthClient.deleteRecords(dt, TimeRangeFilter.between(start, end), c));
-      callbackContext.success();
-    } catch (Exception e) {
-      e.printStackTrace();
-      callbackContext.error(e.getMessage());
+    private void setAggregatedVal(String datatype, JSONObject retObj, AggregationResult response) throws JSONException {
+        // DATA_TYPE add here new data types when extending
+        if (datatype.equalsIgnoreCase("steps")) {
+            StepsFunctions.populateFromAggregatedQuery(response, retObj);
+        } else if (datatype.equalsIgnoreCase("weight")) {
+            WeightFunctions.populateFromAggregatedQuery(response, retObj);
+        } else if (datatype.equalsIgnoreCase("height")) {
+            HeightFunctions.populateFromAggregatedQuery(response, retObj);
+        } else if (datatype.equalsIgnoreCase("activity")) {
+            Duration val = response.get(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+            if (val != null) {
+                long millis = val.getSeconds() * 1000;
+                retObj.put("value", millis);
+                retObj.put("unit", "ms");
+            } else {
+                retObj.put("value", 0);
+                retObj.put("unit", "ms");
+            }
+        } else if (datatype.equalsIgnoreCase("calories")) {
+            if (response.get(TotalCaloriesBurnedRecord.ENERGY_TOTAL) != null) {
+                double kcals = response.get(TotalCaloriesBurnedRecord.ENERGY_TOTAL).getKilocalories();
+                retObj.put("value", kcals);
+                retObj.put("unit", "kcal");
+            } else {
+                retObj.put("value", 0);
+                retObj.put("unit", "kcal");
+            }
+        } else if (datatype.equalsIgnoreCase("calories.active")) {
+            if (response.get(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL) != null) {
+                double kcals = response.get(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL).getKilocalories();
+                retObj.put("value", kcals);
+                retObj.put("unit", "kcal");
+            } else {
+                retObj.put("value", 0);
+                retObj.put("unit", "kcal");
+            }
+        } else if (datatype.equalsIgnoreCase("calories.basal")) {
+            if (response.get(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL) != null) {
+                double kcals = response.get(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL).getKilocalories();
+                retObj.put("value", kcals);
+                retObj.put("unit", "kcal");
+            } else {
+                retObj.put("value", 0);
+                retObj.put("unit", "kcal");
+            }
+        } else if (datatype.equalsIgnoreCase("distance")) {
+            if (response.get(DistanceRecord.DISTANCE_TOTAL) != null) {
+                double meters = response.get(DistanceRecord.DISTANCE_TOTAL).getMeters();
+                retObj.put("value", meters);
+                retObj.put("unit", "m");
+            } else {
+                retObj.put("value", 0);
+                retObj.put("unit", "kcal");
+            }
+        } else if (datatype.equalsIgnoreCase("sleep")) {
+            SleepFunctions.populateFromAggregatedQuery(response, retObj);
+        } else if (datatype.equalsIgnoreCase("heart_rate")) {
+            HeartRateFunctions.populateFromAggregatedQuery(response, retObj);
+        } else {
+            LOG.e(TAG, "Data type not recognized " + datatype);
+        }
     }
-  }
+
+    /**
+     * Stores a datapoint
+     *
+     * @param args
+     */
+    private void store(final JSONArray args) {
+        try {
+            if (!args.getJSONObject(0).has("startDate")) {
+                callbackContext.error("Missing argument startDate");
+                return;
+            }
+            long st = args.getJSONObject(0).getLong("startDate");
+
+            if (!args.getJSONObject(0).has("endDate")) {
+                callbackContext.error("Missing argument endDate");
+                return;
+            }
+            long et = args.getJSONObject(0).getLong("endDate");
+
+            if (!args.getJSONObject(0).has("dataType")) {
+                callbackContext.error("Missing argument dataType");
+                return;
+            }
+            String datatype = args.getJSONObject(0).getString("dataType");
+            KClass<? extends Record> dt = dataTypeNameToClass(datatype);
+            if (dt == null) {
+                callbackContext.error("Datatype " + datatype + " not supported");
+                return;
+            }
+
+            if (!args.getJSONObject(0).has("value")) {
+                callbackContext.error("Missing argument value");
+                return;
+            }
+
+            InsertRecordsResponse response;
+            List<Record> data = new LinkedList<>();
+
+            // DATA_TYPE here we need to add support for each different data type
+            // TODO: we could add meta data when storing, including entry method, client ID and device
+
+            if (datatype.equalsIgnoreCase("steps")) {
+                StepsFunctions.prepareStoreRecords(args.getJSONObject(0), st, et, data);
+            } else if (datatype.equalsIgnoreCase("weight")) {
+                WeightFunctions.prepareStoreRecords(args.getJSONObject(0), st, data);
+            } else if (datatype.equalsIgnoreCase("height")) {
+                HeightFunctions.prepareStoreRecords(args.getJSONObject(0), st, data);
+            } else if (datatype.equalsIgnoreCase("fat_percentage")) {
+                double perc = args.getJSONObject(0).getDouble("value");
+
+                BodyFatRecord record = new BodyFatRecord(
+                        Instant.ofEpochMilli(st), null,
+                        new Percentage(perc),
+                        Metadata.EMPTY
+                );
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("activity")) {
+                String activityStr = args.getJSONObject(0).getString("value");
+                int exerciseType = ActivityMapper.exerciseTypeFromActivity(activityStr);
+                String title = null;
+                String notes = null;
+                List<ExerciseSegment> segments = new LinkedList<>();
+                List<ExerciseLap> laps = new LinkedList<>();
+
+                ExerciseSessionRecord record = new ExerciseSessionRecord(
+                        Instant.ofEpochMilli(st), null,
+                        Instant.ofEpochMilli(et), null,
+                        exerciseType,
+                        title, notes,
+                        Metadata.EMPTY,
+                        segments, laps
+                );
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("calories")) {
+                double kcals = args.getJSONObject(0).getDouble("value");
+
+                TotalCaloriesBurnedRecord record = new TotalCaloriesBurnedRecord(
+                    Instant.ofEpochMilli(st), null,
+                    Instant.ofEpochMilli(et), null,
+                    Energy.kilocalories(kcals),
+                    Metadata.EMPTY
+                );
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("calories.active")) {
+                double kcals = args.getJSONObject(0).getDouble("value");
+
+                ActiveCaloriesBurnedRecord record = new ActiveCaloriesBurnedRecord(
+                        Instant.ofEpochMilli(st), null,
+                        Instant.ofEpochMilli(et), null,
+                        Energy.kilocalories(kcals),
+                        Metadata.EMPTY
+                );
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("calories.basal")) {
+                double kcals = args.getJSONObject(0).getDouble("value");
+                // convert kcals to power
+                double ms = (et - st);
+                double kcalsDay = kcals / (ms / (double) (86400000));
+                Power pow = Power.kilocaloriesPerDay(kcalsDay);
+
+                BasalMetabolicRateRecord record = new BasalMetabolicRateRecord(
+                        Instant.ofEpochMilli(st), null,
+                        pow,
+                        Metadata.EMPTY
+                );
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("blood_glucose")) {
+                JSONObject glucoseobj = args.getJSONObject(0).getJSONObject("value");
+                BloodGlucoseFunctions.prepareStoreRecords(glucoseobj, st, data);
+            } else if (datatype.equalsIgnoreCase("distance")) {
+                double meters = args.getJSONObject(0).getDouble("value");
+                Length len = Length.meters(meters);
+
+                DistanceRecord record = new DistanceRecord(
+                        Instant.ofEpochMilli(st), null,
+                        Instant.ofEpochMilli(et), null,
+                        len,
+                        Metadata.EMPTY);
+
+                data.add(record);
+            } else if (datatype.equalsIgnoreCase("sleep")) {
+                SleepFunctions.prepareStoreRecords(args.getJSONObject(0), data);
+            } else if (datatype.equalsIgnoreCase("heart_rate")) {
+                HeartRateFunctions.prepareStoreRecords(args.getJSONObject(0), st, et, data);
+            } else {
+                callbackContext.error("Datatype not supported " + datatype);
+                return;
+            }
+
+            response = BuildersKt.runBlocking(
+                    EmptyCoroutineContext.INSTANCE,
+                    (s, c) -> healthConnectClient.insertRecords(data, c)
+            );
+
+
+            Log.d(TAG, "Data written of type " + datatype);
+
+            String id = response.getRecordIdsList().get(0);
+
+            callbackContext.success(id);
+
+        } catch (JSONException ex) {
+            callbackContext.error("Cannot parse request object " + ex.getMessage());
+        } catch (InterruptedException ex2) {
+            callbackContext.error("Thread interrupted" + ex2.getMessage());
+        }
+    }
+
+    /**
+     * Deletes datapoints
+     *
+     * @param args
+     */
+    private void delete(final JSONArray args) {
+        try {
+            String datatype = args.getJSONObject(0).getString("dataType");
+            KClass<? extends Record> dt = dataTypeNameToClass(datatype);
+            if (dt == null) {
+                callbackContext.error("Datatype " + datatype + " not supported");
+                return;
+            }
+
+            if (args.getJSONObject(0).has("id")) {
+                String id = args.getJSONObject(0).getString("id");
+
+                List<String> recordids = new LinkedList<>();
+                recordids.add(id);
+                BuildersKt.runBlocking(
+                        EmptyCoroutineContext.INSTANCE,
+                        (s, c) -> healthConnectClient.deleteRecords(dt, recordids, new LinkedList<>(), c)
+                );
+                Log.d(TAG, "Data deleted by ID of type " + datatype);
+
+                callbackContext.success();
+            } else {
+                if (!args.getJSONObject(0).has("startDate")) {
+                    callbackContext.error("Missing argument startDate");
+                    return;
+                }
+                final long st = args.getJSONObject(0).getLong("startDate");
+
+                if (!args.getJSONObject(0).has("endDate")) {
+                    callbackContext.error("Missing argument endDate");
+                    return;
+                }
+                final long et = args.getJSONObject(0).getLong("endDate");
+
+                TimeRangeFilter timeRange = TimeRangeFilter.between(Instant.ofEpochMilli(st), Instant.ofEpochMilli(et));
+                BuildersKt.runBlocking(
+                        EmptyCoroutineContext.INSTANCE,
+                        (s, c) -> healthConnectClient.deleteRecords(dt, timeRange, c)
+                );
+                Log.d(TAG, "Data deleted by time range of type " + datatype);
+
+                callbackContext.success();
+            }
+        } catch (JSONException ex) {
+            callbackContext.error("Cannot parse request object " + ex.getMessage());
+        } catch (InterruptedException ex2) {
+            callbackContext.error("Thread interrupted" + ex2.getMessage());
+        }
+    }
 }

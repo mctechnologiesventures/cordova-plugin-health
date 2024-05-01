@@ -60,7 +60,7 @@
 
     case HKWorkoutActivityTypeSoccer:  return @"football.soccer";
 
-    case HKWorkoutActivityTypeFunctionalStrengthTraining:  return @"functional_strength";
+    case HKWorkoutActivityTypeFunctionalStrengthTraining:  return @"strength_training.functional";
 
     case HKWorkoutActivityTypeGolf:  return @"golf";
 
@@ -100,8 +100,6 @@
 
     case HKWorkoutActivityTypePilates:  return @"pilates";
 
-    case HKWorkoutActivityTypePreparationAndRecovery:  return @"preparation_and_recovery";
-
     case HKWorkoutActivityTypeRacquetball:  return @"racquetball";
 
     case HKWorkoutActivityTypeClimbing:  return @"rock_climbing";
@@ -128,13 +126,13 @@
 
     case HKWorkoutActivityTypeSquash:  return @"squash";
 
-    case HKWorkoutActivityTypeStairClimbing:  return @"stair_climbing";
+    case HKWorkoutActivityTypeStairClimbing: return @"stair_climbing.machine";
 
-    case HKWorkoutActivityTypeStepTraining: return @"stair_climbing.machine";
-
-    case HKWorkoutActivityTypeStairs:  return @"stairs";
+    case HKWorkoutActivityTypeStairs:  return @"stair_climbing";
 
     case HKWorkoutActivityTypeTraditionalStrengthTraining:  return @"strength_training";
+
+    case HKWorkoutActivityTypePreparationAndRecovery:  return @"preparation_and_recovery";
 
     case HKWorkoutActivityTypeSurfingSports:  return @"surfing";
 
@@ -190,14 +188,6 @@
 
   } else if ([which isEqualToString:@"biking"]) { return HKWorkoutActivityTypeCycling;
 
-  } else if ([which isEqualToString:@"biking.hand"]) { return HKWorkoutActivityTypeHandCycling;
-
-  } else if ([which isEqualToString:@"biking.mountain"]) { return HKWorkoutActivityTypeCycling;
-
-  } else if ([which isEqualToString:@"biking.road"]) { return HKWorkoutActivityTypeCycling;
-
-  } else if ([which isEqualToString:@"biking.spinning"]) { return HKWorkoutActivityTypeCycling;
-
   } else if ([which isEqualToString:@"biking.stationary"]) { return HKWorkoutActivityTypeCycling;
 
   } else if ([which isEqualToString:@"biking.utility"]) { return HKWorkoutActivityTypeCycling;
@@ -230,6 +220,12 @@
     }
     return HKWorkoutActivityTypeDance;
 
+  } else if ([which isEqualToString:@"dancing.cardio"]) {
+    if (@available(iOS 14.0, *)) {
+      return HKWorkoutActivityTypeCardioDance;
+    }
+    return HKWorkoutActivityTypeDance;
+
   } else if ([which isEqualToString:@"disc_sports"]) { if (@available(iOS 13.0, *)) {
       return HKWorkoutActivityTypeDiscSports;
     }
@@ -251,7 +247,7 @@
 
   } else if ([which isEqualToString:@"football.soccer"]) { return HKWorkoutActivityTypeSoccer;
 
-  } else if ([which isEqualToString:@"functional_strength"]) { return HKWorkoutActivityTypeFunctionalStrengthTraining;
+  } else if ([which isEqualToString:@"strength_training.functional"]) { return HKWorkoutActivityTypeFunctionalStrengthTraining;
 
   } else if ([which isEqualToString:@"golf"]) { return HKWorkoutActivityTypeGolf;
 
@@ -262,6 +258,8 @@
   } else if ([which isEqualToString:@"hiking"]) { return HKWorkoutActivityTypeHiking;
 
   } else if ([which isEqualToString:@"hockey"]) { return HKWorkoutActivityTypeHockey;
+
+  } else if ([which isEqualToString:@"hockey.roller"]) { return HKWorkoutActivityTypeHockey;
 
   } else if ([which isEqualToString:@"horseback_riding"]) { return HKWorkoutActivityTypeEquestrianSports;
 
@@ -274,10 +272,6 @@
   } else if ([which isEqualToString:@"interval_training.high_intensity"]) { return HKWorkoutActivityTypeHighIntensityIntervalTraining;
 
   } else if ([which isEqualToString:@"jump_rope"]) { return HKWorkoutActivityTypeJumpRope;
-
-  } else if ([which isEqualToString:@"kayaking"]) { return HKWorkoutActivityTypePaddleSports;
-
-  } else if ([which isEqualToString:@"kick_scooter"]) { return HKWorkoutActivityTypeCycling;
 
   } else if ([which isEqualToString:@"kickboxing"]) { return HKWorkoutActivityTypeKickboxing;
 
@@ -297,13 +291,13 @@
 
   } else if ([which isEqualToString:@"play"]) { return HKWorkoutActivityTypePlay;
 
-  } else if ([which isEqualToString:@"pickleball"]) { if (@available(iOS 14.0, *)) {
+  } else if ([which isEqualToString:@"pickleball"]) { 
+    if (@available(iOS 14.0, *)) {
       return HKWorkoutActivityTypePickleball;
-  }
-
+    }
   } else if ([which isEqualToString:@"pilates"]) { return HKWorkoutActivityTypePilates;
 
-  }else if ([which isEqualToString:@"preparation_and_recovery"]) { return HKWorkoutActivityTypePreparationAndRecovery;
+  } else if ([which isEqualToString:@"preparation_and_recovery"]) { return HKWorkoutActivityTypePreparationAndRecovery;
 
   } else if ([which isEqualToString:@"racquetball"]) { return HKWorkoutActivityTypeRacquetball;
 
@@ -317,43 +311,21 @@
 
   } else if ([which isEqualToString:@"running"]) { return HKWorkoutActivityTypeRunning;
 
-  } else if ([which isEqualToString:@"running.jogging"]) { return HKWorkoutActivityTypeRunning;
-
-  } else if ([which isEqualToString:@"running.sand"]) { return HKWorkoutActivityTypeRunning;
-
   } else if ([which isEqualToString:@"running.treadmill"]) { return HKWorkoutActivityTypeRunning;
 
   } else if ([which isEqualToString:@"sailing"]) { return HKWorkoutActivityTypeSailing;
 
   } else if ([which isEqualToString:@"scuba_diving"]) { return HKWorkoutActivityTypeWaterSports;
 
-  } else if ([which isEqualToString:@"skateboarding"]) { return HKWorkoutActivityTypeSkatingSports;
-
   } else if ([which isEqualToString:@"skating"]) { return HKWorkoutActivityTypeSkatingSports;
 
-  } else if ([which isEqualToString:@"skating.cross"]) { return HKWorkoutActivityTypeSkatingSports;
-
-  } else if ([which isEqualToString:@"skating.indoor"]) { return HKWorkoutActivityTypeSkatingSports;
-
-  } else if ([which isEqualToString:@"skating.inline"]) { return HKWorkoutActivityTypeSkatingSports;
-
-  } else if ([which isEqualToString:@"skiing"]) { return HKWorkoutActivityTypeSnowSports;
-
-  } else if ([which isEqualToString:@"skiing.back_country"]) { return HKWorkoutActivityTypeSnowSports;
+  } else if ([which isEqualToString:@"skiing"]) { return HKWorkoutActivityTypeDownhillSkiing;
 
   } else if ([which isEqualToString:@"skiing.cross_country"]) { return HKWorkoutActivityTypeCrossCountrySkiing;
 
   } else if ([which isEqualToString:@"skiing.downhill"]) { return HKWorkoutActivityTypeDownhillSkiing;
 
-  } else if ([which isEqualToString:@"skiing.kite"]) { return HKWorkoutActivityTypeSnowSports;
-
-  } else if ([which isEqualToString:@"skiing.roller"]) { return HKWorkoutActivityTypeSnowSports;
-
-  } else if ([which isEqualToString:@"sledding"]) { return HKWorkoutActivityTypeSnowSports;
-
   } else if ([which isEqualToString:@"snowboarding"]) { return HKWorkoutActivityTypeSnowSports;
-
-  } else if ([which isEqualToString:@"snowmobile"]) { return HKWorkoutActivityTypeSnowSports;
 
   } else if ([which isEqualToString:@"snowshoeing"]) { return HKWorkoutActivityTypeSnowSports;
 
@@ -363,15 +335,13 @@
 
   } else if ([which isEqualToString:@"squash"]) { return HKWorkoutActivityTypeSquash;
 
-  } else if ([which isEqualToString:@"stairs"]) { return HKWorkoutActivityTypeStairs;
+  } else if ([which isEqualToString:@"stair_climbing"]) { return HKWorkoutActivityTypeStairs;
 
-  } else if ([which isEqualToString:@"stair_climbing"]) { return HKWorkoutActivityTypeStairClimbing;
-
-  } else if ([which isEqualToString:@"stair_climbing.machine"]) { return HKWorkoutActivityTypeStepTraining;
-
-  } else if ([which isEqualToString:@"standup_paddleboarding"]) { return HKWorkoutActivityTypePaddleSports;
+  } else if ([which isEqualToString:@"stair_climbing.machine"]) { return HKWorkoutActivityTypeStairClimbing;
 
   } else if ([which isEqualToString:@"strength_training"]) { return HKWorkoutActivityTypeTraditionalStrengthTraining;
+
+  } else if ([which isEqualToString:@"stretching"]) { return HKWorkoutActivityTypePreparationAndRecovery;
 
   } else if ([which isEqualToString:@"surfing"]) { return HKWorkoutActivityTypeSurfingSports;
 
@@ -392,10 +362,6 @@
   } else if ([which isEqualToString:@"unknown"]) { return HKWorkoutActivityTypeOther;
 
   } else if ([which isEqualToString:@"volleyball"]) { return HKWorkoutActivityTypeVolleyball;
-
-  } else if ([which isEqualToString:@"volleyball.beach"]) { return HKWorkoutActivityTypeVolleyball;
-
-  } else if ([which isEqualToString:@"volleyball.indoor"]) { return HKWorkoutActivityTypeVolleyball;
 
   } else if ([which isEqualToString:@"wakeboarding"]) { return HKWorkoutActivityTypeWaterSports;
 

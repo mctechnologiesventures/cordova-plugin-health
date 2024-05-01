@@ -132,12 +132,11 @@ static NSString *const HKPluginKeyUUID = @"UUID";
  * @return      *NSString
  */
 + (NSString *)stringFromDate:(NSDate *)date {
-    __strong static NSDateFormatter *formatter = nil;
+    __strong static NSISO8601DateFormatter *formatter = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        formatter = [[NSDateFormatter alloc] init];
-        [formatter setLocale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
-        [formatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ssZZZZZ"];
+        formatter = [[NSISO8601DateFormatter alloc] init];
+        formatter.formatOptions = NSISO8601DateFormatWithFractionalSeconds | NSISO8601DateFormatWithInternetDateTime;
     });
 
     return [formatter stringFromDate:date];
@@ -406,17 +405,28 @@ static NSString *const HKPluginKeyUUID = @"UUID";
 }
 
 - (NSNumber*) getCategoryValueByName:(NSString *) categoryValue type:(HKCategoryType*) type {
-    NSDictionary * map = @{
-      @"HKCategoryTypeIdentifierSleepAnalysis":@{
-        @"HKCategoryValueSleepAnalysisInBed":@(HKCategoryValueSleepAnalysisInBed),
-        @"HKCategoryValueSleepAnalysisAsleep":@(HKCategoryValueSleepAnalysisAsleep),
-        @"HKCategoryValueSleepAnalysisAwake":@(HKCategoryValueSleepAnalysisAwake),
-        @"HKCategoryValueSleepAnalysisAsleepCore":@(HKCategoryValueSleepAnalysisAsleepCore),
-        @"HKCategoryValueSleepAnalysisAsleepDeep":@(HKCategoryValueSleepAnalysisAsleepDeep),
-        @"HKCategoryValueSleepAnalysisAsleepREM":@(HKCategoryValueSleepAnalysisAsleepREM)
-      }
-    };
-
+    NSDictionary * map;
+    if (@available(iOS 16.0, *)) {
+        map = @{
+            @"HKCategoryTypeIdentifierSleepAnalysis":@{
+                @"HKCategoryValueSleepAnalysisInBed":@(HKCategoryValueSleepAnalysisInBed),
+                @"HKCategoryValueSleepAnalysisAsleep":@(HKCategoryValueSleepAnalysisAsleep),
+                @"HKCategoryValueSleepAnalysisAwake":@(HKCategoryValueSleepAnalysisAwake),
+                @"HKCategoryValueSleepAnalysisAsleepCore":@(HKCategoryValueSleepAnalysisAsleepCore),
+                @"HKCategoryValueSleepAnalysisAsleepDeep":@(HKCategoryValueSleepAnalysisAsleepDeep),
+                @"HKCategoryValueSleepAnalysisAsleepREM":@(HKCategoryValueSleepAnalysisAsleepREM)
+            }
+        };
+    } else {
+        map = @{
+              @"HKCategoryTypeIdentifierSleepAnalysis":@{
+                @"HKCategoryValueSleepAnalysisInBed":@(HKCategoryValueSleepAnalysisInBed),
+                @"HKCategoryValueSleepAnalysisAsleep":@(HKCategoryValueSleepAnalysisAsleep),
+                @"HKCategoryValueSleepAnalysisAwake":@(HKCategoryValueSleepAnalysisAwake),
+            }
+        };
+    }
+    
     NSDictionary * valueMap = map[type.identifier];
     if (!valueMap) {
       return HKCategoryValueNotApplicable;
@@ -541,6 +551,28 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:[HKHealthStore isHealthDataAvailable]];
     [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
 }
+
+/**
+ * Opens the Health app
+ *
+ * @param command *CDVInvokedUrlCommand
+ */
+- (void)openHealthSettings:(CDVInvokedUrlCommand *)command {
+    CDVPluginResult* pluginResult = nil;
+        
+        NSString* scheme = @"x-apple-health://";
+        
+        if ([[UIApplication sharedApplication] canOpenURL:[NSURL URLWithString:scheme]]) {
+            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:scheme]];
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:(true)];
+        }
+        else {
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsBool:(false)];
+        }
+        
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+}
+
 
 /**
  * Request authorization for read and/or write permissions
@@ -803,7 +835,10 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     //    workoutPredicate = [HKQuery predicateForWorkoutsWithWorkoutActivityType:HKWorkoutActivityTypeCycling];
     //  }
 
-    BOOL *includeCalsAndDist = (args[@"includeCalsAndDist"] != nil && [args[@"includeCalsAndDist"] boolValue]);
+    BOOL *includeCalories = (args[@"includeCalories"] != nil && [args[@"includeCalories"] boolValue]);
+    BOOL *includeDistance = (args[@"includeDistance"] != nil && [args[@"includeDistance"] boolValue]);
+
+    
 
     NSSet *types = [NSSet setWithObjects:[HKWorkoutType workoutType], nil];
     [[HealthKit sharedHealthStore] requestAuthorizationToShareTypes:nil readTypes:types completion:^(BOOL success, NSError *error) {
@@ -835,40 +870,30 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                             source = workout.source;
                         }
                         NSMutableDictionary *entry;
+                        entry = [
+                                @{
+                                        @"duration": @(workout.duration),
+                                        HKPluginKeyStartDate: [HealthKit stringFromDate:workout.startDate],
+                                        HKPluginKeyEndDate: [HealthKit stringFromDate:workout.endDate],
+                                        HKPluginKeySourceBundleId: source.bundleIdentifier,
+                                        HKPluginKeySourceName: source.name,
+                                        @"activityType": workoutActivity,
+                                        @"UUID": [workout.UUID UUIDString]
+                                } mutableCopy
+                            ];
 
-                        if(includeCalsAndDist != nil && includeCalsAndDist) {
-                            double meters = [workout.totalDistance doubleValueForUnit:[HKUnit meterUnit]];
-                            NSString *metersString = [NSString stringWithFormat:@"%ld", (long) meters];
-
+                        if(includeCalories != nil && includeCalories) {
                             // Parse totalEnergyBurned in kilocalories
                             double cals = [workout.totalEnergyBurned doubleValueForUnit:[HKUnit kilocalorieUnit]];
                             NSString *calories = [[NSNumber numberWithDouble:cals] stringValue];
 
-                            entry = [
-                                @{
-                                        @"duration": @(workout.duration),
-                                        HKPluginKeyStartDate: [HealthKit stringFromDate:workout.startDate],
-                                        HKPluginKeyEndDate: [HealthKit stringFromDate:workout.endDate],
-                                        @"distance": metersString,
-                                        @"energy": calories,
-                                        HKPluginKeySourceBundleId: source.bundleIdentifier,
-                                        HKPluginKeySourceName: source.name,
-                                        @"activityType": workoutActivity,
-                                        @"UUID": [workout.UUID UUIDString]
-                                } mutableCopy
-                            ];
-                        }  else {
-                            entry = [
-                                @{
-                                        @"duration": @(workout.duration),
-                                        HKPluginKeyStartDate: [HealthKit stringFromDate:workout.startDate],
-                                        HKPluginKeyEndDate: [HealthKit stringFromDate:workout.endDate],
-                                        HKPluginKeySourceBundleId: source.bundleIdentifier,
-                                        HKPluginKeySourceName: source.name,
-                                        @"activityType": workoutActivity,
-                                        @"UUID": [workout.UUID UUIDString]
-                                } mutableCopy
-                            ];
+                            entry[@"energy"] = calories;
+                        }
+                        if(includeDistance != nil && includeDistance) {
+                            double meters = [workout.totalDistance doubleValueForUnit:[HKUnit meterUnit]];
+                            NSString *metersString = [NSString stringWithFormat:@"%ld", (long) meters];
+
+                            entry[@"distance"] = metersString;
                         }
 
                         [finalResults addObject:entry];
@@ -1337,15 +1362,20 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     NSString *sampleTypeString = args[HKPluginKeySampleType];
     NSString *unitString = args[HKPluginKeyUnit];
     HKQuantityType *type = [HKObjectType quantityTypeForIdentifier:sampleTypeString];
+    HKStatisticsOptions sumOptions = HKStatisticsOptionCumulativeSum;
 
 
     if (type == nil) {
-        [HealthKit triggerErrorCallbackWithMessage:@"sampleType was invalid" command:command delegate:self.commandDelegate];
+        [HealthKit triggerErrorCallbackWithMessage:@"sampleType is invalid" command:command delegate:self.commandDelegate];
         return;
+    } else if ([sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRate"]) {
+        sumOptions = HKStatisticsOptionDiscreteAverage | HKStatisticsOptionDiscreteMin | HKStatisticsOptionDiscreteMax;
+
+    } else { //HKQuantityTypeIdentifierStepCount, etc...
+        sumOptions = HKStatisticsOptionCumulativeSum;
     }
 
     NSPredicate *predicate = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
-    HKStatisticsOptions sumOptions = HKStatisticsOptionCumulativeSum;
     HKStatisticsQuery *query;
     HKUnit *unit = ((unitString != nil) ? [HKUnit unitFromString:unitString] : [HKUnit countUnit]);
     query = [[HKStatisticsQuery alloc] initWithQuantityType:type
@@ -1354,9 +1384,22 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                                           completionHandler:^(HKStatisticsQuery *statisticsQuery,
                                                   HKStatistics *result,
                                                   NSError *error) {
-                                              HKQuantity *sum = [result sumQuantity];
-                                              CDVPluginResult *response = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDouble:[sum doubleValueForUnit:unit]];
-                                              [self.commandDelegate sendPluginResult:response callbackId:command.callbackId];
+        if ([sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRate"]) {
+            HKQuantity *avg = [result averageQuantity];
+            HKQuantity *min = [result minimumQuantity];
+            HKQuantity *max = [result maximumQuantity];
+            NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+            stats[@"average"] = @([avg doubleValueForUnit:unit]);
+            stats[@"min"] = @([min doubleValueForUnit:unit]);
+            stats[@"max"] = @([max doubleValueForUnit:unit]);
+            
+            CDVPluginResult *response = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:stats];
+            [self.commandDelegate sendPluginResult:response callbackId:command.callbackId];
+        } else { //HKQuantityTypeIdentifierStepCount, etc...
+            HKQuantity *sum = [result sumQuantity];
+            CDVPluginResult *response = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDouble:[sum doubleValueForUnit:unit]];
+            [self.commandDelegate sendPluginResult:response callbackId:command.callbackId];
+        }
                                           }];
 
     [[HealthKit sharedHealthStore] executeQuery:query];
@@ -1540,7 +1583,7 @@ static NSString *const HKPluginKeyUUID = @"UUID";
         [HealthKit triggerErrorCallbackWithMessage:@"sampleType is invalid" command:command delegate:self.commandDelegate];
         return;
     } else if ([sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRate"]) {
-        statOpt = HKStatisticsOptionDiscreteAverage;
+        statOpt = HKStatisticsOptionDiscreteAverage | HKStatisticsOptionDiscreteMin | HKStatisticsOptionDiscreteMax;
 
     } else { //HKQuantityTypeIdentifierStepCount, etc...
         statOpt = HKStatisticsOptionCumulativeSum | HKStatisticsOptionSeparateBySource;
@@ -1616,31 +1659,37 @@ static NSString *const HKPluginKeyUUID = @"UUID";
                                                        differentSource = YES;
                                                        tempStatOpt = tempStatOpt & ~HKStatisticsOptionSeparateBySource;
                                                    }
-                                                   switch (tempStatOpt) {
-                                                       case HKStatisticsOptionDiscreteAverage:
-                                                           quantity = result.averageQuantity;
-                                                           break;
-                                                       case HKStatisticsOptionCumulativeSum:
-                                                           quantity = result.sumQuantity;
-                                                           break;
-                                                       case HKStatisticsOptionDiscreteMin:
-                                                           quantity = result.minimumQuantity;
-                                                           break;
-                                                       case HKStatisticsOptionDiscreteMax:
-                                                           quantity = result.maximumQuantity;
-                                                           break;
-                                                       case HKStatisticsOptionNone:
-                                                       default:
-                                                           break;
-                                                   }
-                                                   double value = [quantity doubleValueForUnit:unit];
+                        if (tempStatOpt == HKStatisticsOptionDiscreteAverage) {
+                            quantity = result.averageQuantity;
+                            entry[@"quantity"] = @([quantity doubleValueForUnit:unit]);
+                        } else if (tempStatOpt == HKStatisticsOptionCumulativeSum) {
+                            quantity = result.sumQuantity;
+                            entry[@"quantity"] = @([quantity doubleValueForUnit:unit]);
+                        } else if (tempStatOpt == HKStatisticsOptionDiscreteMin) {
+                            quantity = result.minimumQuantity;
+                            entry[@"quantity"] = @([quantity doubleValueForUnit:unit]);
+                        } else if (tempStatOpt == HKStatisticsOptionDiscreteMax) {
+                            quantity = result.maximumQuantity;
+                            entry[@"quantity"] = @([quantity doubleValueForUnit:unit]);
+                        } else if (tempStatOpt == (HKStatisticsOptionDiscreteAverage | HKStatisticsOptionDiscreteMin | HKStatisticsOptionDiscreteMax)) {
+                            HKQuantity *avg = [result averageQuantity];
+                            HKQuantity *min = [result minimumQuantity];
+                            HKQuantity *max = [result maximumQuantity];
+                            NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+                            stats[@"average"] = @([avg doubleValueForUnit:unit]);
+                            stats[@"min"] = @([min doubleValueForUnit:unit]);
+                            stats[@"max"] = @([max doubleValueForUnit:unit]);
+                            
+                            entry[@"quantity"] = stats;
+                        }
+                                                   double value = [entry[@"quantity"] doubleValue];
                                                    if (value > 0 && differentSource) {
                                                        if ([[result sources] count] > 0) {
                                                            HKSource* source = [[result sources] firstObject];
                                                            entry[HKPluginKeySourceName] = [NSString stringWithFormat:@"%@_%@", [source name], [source bundleIdentifier]];
                                                        }
                                                    }
-                                                   entry[@"quantity"] = @(value);
+
                                                    [finalResults addObject:entry];
                                                }];
 
@@ -1855,7 +1904,9 @@ static NSString *const HKPluginKeyUUID = @"UUID";
 
 /**
  * Delete matching samples from the HealthKit store.
- * See https://developer.apple.com/library/ios/documentation/HealthKit/Reference/HKHealthStore_Class/#//apple_ref/occ/instm/HKHealthStore/deleteObject:withCompletion:
+ * TODO: consider adding deletion by ID, this will likely require a query, to retrieve the object, and the a deletion
+ * for querying, we may need to run: https://developer.apple.com/documentation/healthkit/hkquery/1614783-predicateforobjectwithuuid?language=objc
+ * for deleting, we may need to use: https://developer.apple.com/documentation/healthkit/hkhealthstore/1614155-deleteobject
  *
  * @param command *CDVInvokedUrlCommand
  */

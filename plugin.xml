@@ -33,8 +33,6 @@
 
 
     <config-file target="AndroidManifest.xml" parent="/*">
-      <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-      <uses-permission android:name="android.permission.BODY_SENSORS" />
       <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
       <!-- Use the following if API target is < 29 -->
       <uses-permission android:name="android.gms.permission.ACTIVITY_RECOGNITION"/>

@@ -87,6 +87,8 @@
   <!-- android -->
   <platform name="android">
     <framework src="androidx.health.connect:connect-client:1.1.0-alpha02" />
+    <framework src="org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3" />
+
     <framework src="src/android/build-extras.gradle" custom="true" type="gradleReference" />
 
     <config-file target="AndroidManifest.xml" parent="/*">

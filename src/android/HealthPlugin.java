@@ -5,7 +5,9 @@ package org.apache.cordova.health;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.health.connect.HealthConnectManager;
 import android.net.Uri;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.activity.result.ActivityResultCallback;
@@ -170,7 +172,13 @@ public class HealthPlugin extends CordovaPlugin {
             callbackContext.success();
         } else if (action.equals("openHealthSettings")) {
             Activity currentActivity = this.cordova.getActivity();
-            Intent activityIntent =  new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
+            Intent activityIntent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+              activityIntent =  new Intent(HealthConnectManager.ACTION_MANAGE_HEALTH_PERMISSIONS)
+                .putExtra(Intent.EXTRA_PACKAGE_NAME, cordova.getActivity().getPackageName());
+            } else {
+              activityIntent =  new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
+            }
             currentActivity.startActivity(activityIntent);
             callbackContext.success();
         } else if ("isAuthorized".equals(action)) {

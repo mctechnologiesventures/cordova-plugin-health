@@ -16,7 +16,7 @@ WHealth.prototype.promptInstallFit = function (onSuccess, onError) {
   exec(onSuccess, onError, "whealth", "promptInstallFit", []);
 };
 
-WHealth.prototype.promptInstallFit = function (onSuccess, onError) {
+WHealth.prototype.openHealthSettings = function (onSuccess, onError) {
   exec(onSuccess, onError, "whealth", "openHealthSettings", []);
 };
 

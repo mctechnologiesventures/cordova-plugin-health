@@ -16,6 +16,10 @@ WHealth.prototype.promptInstallFit = function (onSuccess, onError) {
   exec(onSuccess, onError, "whealth", "promptInstallFit", []);
 };
 
+WHealth.prototype.promptInstallFit = function (onSuccess, onError) {
+  exec(onSuccess, onError, "whealth", "openHealthSettings", []);
+};
+
 WHealth.prototype.requestAuthorization = function (
   datatypes,
   onSuccess,

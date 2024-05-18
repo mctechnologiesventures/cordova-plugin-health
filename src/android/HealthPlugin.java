@@ -180,6 +180,12 @@ public class HealthPlugin extends CordovaPlugin {
         }
       });
       return true;
+    } else if (action.equals("openHealthSettings")) {
+        Activity currentActivity = this.cordova.getActivity();
+        PackageManager pm = cordova.getActivity().getApplicationContext().getPackageManager();
+        Intent activityIntent = pm.getLaunchIntentForPackage("com.google.android.apps.fitness");
+        currentActivity.startActivity(activityIntent);
+        callbackContext.success();
     } else if ("isAuthorized".equals(action)) {
       cordova.getThreadPool().execute(new Runnable() {
         @Override

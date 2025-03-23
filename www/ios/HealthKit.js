@@ -81,6 +81,8 @@ define('readDateOfBirth', { noArgs: true });
 define('readGender', { noArgs: true });
 define('readFitzpatrickSkinType', { noArgs: true });
 define('findWorkouts');
+define('queryWorkoutRoutes');
+define('queryHeartRateDuringWorkout');
 define('delete');
 define('readWeight');
 define('readHeight');

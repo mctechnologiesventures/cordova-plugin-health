@@ -14,6 +14,7 @@ dataTypes['height'] = 'HKQuantityTypeIdentifierHeight';
 dataTypes['weight'] = 'HKQuantityTypeIdentifierBodyMass';
 dataTypes['bmi'] = 'HKQuantityTypeIdentifierBodyMassIndex';
 dataTypes['heart_rate'] = 'HKQuantityTypeIdentifierHeartRate';
+dataTypes['workout_route'] = 'HKWorkoutRouteType';
 dataTypes['heart_rate.resting'] = 'HKQuantityTypeIdentifierRestingHeartRate';
 dataTypes['heart_rate.variability'] = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN';
 dataTypes['fat_percentage'] = 'HKQuantityTypeIdentifierBodyFatPercentage';
@@ -189,6 +190,43 @@ Health.prototype.isAuthorized = function (dts, onSuccess, onError) {
   }, onError);
 };
 
+let addWorkoutRoutesAndHeartRate = async function addWorkoutRoutesAndHeartRate(opts, workouts){
+  for(let i= 0; i < workouts.length; i++){
+   if(opts.includeRoute) {
+     try {
+       console.log('Querying route for workout', workouts[i].id);
+       let route = await new Promise((resolve, reject) => {
+         window.plugins.healthkit.queryWorkoutRoutes(workouts[i].id, resolve, reject);
+       });
+      console.log('Route for workout', workouts[i].id, route);
+       route.forEach((point) => {
+         point.timestamp = new Date(point.timestamp);
+       });
+
+       workouts[i].route = route;
+     } catch (e) {
+       console.log('Error querying route during workout', e);
+     }
+   }
+   
+   if(opts.includeHeartRate) {
+     try {
+       let heartRate = await new Promise((resolve, reject) => {
+         window.plugins.healthkit.queryHeartRateDuringWorkout(workouts[i].id, resolve, reject);
+       });
+
+       heartRate.forEach((point) => {
+         point.timestamp = new Date(point.timestamp);
+       });
+
+       workouts[i].heartRate = heartRate;
+     } catch (e) {
+       console.log('Error querying heart rate during workout', e);
+     }
+    }
+  }
+}
+
 // queries for a datatype
 Health.prototype.query = function (opts, onSuccess, onError) {
   var startD = opts.startDate;
@@ -242,7 +280,13 @@ Health.prototype.query = function (opts, onSuccess, onError) {
           result.push(res);
         }
       }
-      onSuccess(result);
+      
+      if(opts.includeRoute || opts.includeHeartRate) {
+        addWorkoutRoutesAndHeartRate(opts, result)
+            .then(() => onSuccess(result), onError);
+      } else {
+        onSuccess(result);
+      }
     }, onError);
   } else if (opts.dataType === 'nutrition' || opts.dataType === 'blood_pressure') {
     // do the correlation queries
@@ -356,7 +400,8 @@ Health.prototype.queryAggregated = function (opts, onSuccess, onError) {
   if ((opts.dataType !== 'steps') && (opts.dataType !== 'distance') &&
     (opts.dataType !== 'calories') && (opts.dataType !== 'calories.active') &&
     (opts.dataType !== 'calories.basal') && (opts.dataType !== 'activity') &&
-    (opts.dataType !== 'heart_rate') &&
+    (opts.dataType !== 'heart_rate') && (opts.dataType !== 'heart_rate.resting') &&
+    (opts.dataType !== 'heart_rate.variability') && (opts.dataType !== 'weight') &&
     (!opts.dataType.startsWith('nutrition')) && (opts.dataType !== 'appleExerciseTime')) {
     // unsupported datatype
     onError('Datatype ' + opts.dataType + ' not supported in queryAggregated');

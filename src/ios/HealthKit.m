@@ -1,6 +1,7 @@
 #import "HealthKit.h"
 #import "HKHealthStore+AAPLExtensions.h"
 #import "WorkoutActivityConversion.h"
+#import <CoreLocation/CoreLocation.h>
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "OCNotLocalizedStringInspection"
@@ -563,7 +564,7 @@ static NSString *const HKPluginKeyUUID = @"UUID";
         NSString* scheme = @"x-apple-health://";
         
         if ([[UIApplication sharedApplication] canOpenURL:[NSURL URLWithString:scheme]]) {
-            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:scheme]];
+            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:scheme] options:@{} completionHandler:nil];
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:(true)];
         }
         else {
@@ -594,6 +595,8 @@ static NSString *const HKPluginKeyUUID = @"UUID";
 
         if ([elem isEqual:@"HKWorkoutTypeIdentifier"]) {
             type = [HKObjectType workoutType];
+        } else if ([elem isEqual:@"HKWorkoutRouteType"]) {
+            type = [HKSeriesType workoutRouteType];
         } else {
             type = [HealthKit getHKObjectType:elem];
         }
@@ -1443,8 +1446,12 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
     NSPredicate *predicate2 = nil;
 
-    BOOL filtered = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
-    if (filtered) {
+    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
+    // check if args contains the filtered key for old versions of the plugin
+    if (!filterOutUserInput) {
+        filterOutUserInput = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
+    }
+    if (filterOutUserInput) {
         predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
     }
 
@@ -1582,7 +1589,10 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     if (quantityType == nil) {
         [HealthKit triggerErrorCallbackWithMessage:@"sampleType is invalid" command:command delegate:self.commandDelegate];
         return;
-    } else if ([sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRate"]) {
+    } else if ([sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRate"] ||
+               [sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierHeartRateVariabilitySDNN"] ||
+               [sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierRestingHeartRate"] ||
+               [sampleTypeString isEqualToString:@"HKQuantityTypeIdentifierBodyMass"]) {
         statOpt = HKStatisticsOptionDiscreteAverage | HKStatisticsOptionDiscreteMin | HKStatisticsOptionDiscreteMax;
 
     } else { //HKQuantityTypeIdentifierStepCount, etc...
@@ -1608,8 +1618,12 @@ static NSString *const HKPluginKeyUUID = @"UUID";
     NSPredicate *predicate1 = [HKQuery predicateForSamplesWithStartDate:startDate endDate:endDate options:HKQueryOptionStrictStartDate];
     NSPredicate *predicate2 = nil;
 
-    BOOL filtered = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
-    if (filtered) {
+    BOOL filterOutUserInput = (args[@"filterOutUserInput"] != nil && [args[@"filterOutUserInput"] boolValue]);
+    // check if args contains the filtered key for old versions of the plugin
+    if (!filterOutUserInput) {
+        filterOutUserInput = (args[@"filtered"] != nil && [args[@"filtered"] boolValue]);
+    }
+    if (filterOutUserInput) {
         predicate2 = [NSPredicate predicateWithFormat:@"metadata.%K != YES", HKMetadataKeyWasUserEntered];
     }
 
@@ -1942,6 +1956,148 @@ static NSString *const HKPluginKeyUUID = @"UUID";
       }];
     }
   }];
+}
+
+
+
+- (void)queryWorkoutRoutes:(CDVInvokedUrlCommand*)command {
+    NSString *workoutUUID = [command.arguments objectAtIndex:0];
+
+    // Fetch the workout from HealthKit using the UUID
+    NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:workoutUUID];
+    NSPredicate *predicate = [HKQuery predicateForObjectWithUUID:uuid];
+
+    HKSampleQuery *workoutQuery = [[HKSampleQuery alloc] initWithSampleType:[HKObjectType workoutType] predicate:predicate limit:1 sortDescriptors:nil resultsHandler:^(HKSampleQuery *query, NSArray *results, NSError *error) {
+        if (!results || error || results.count == 0) {
+            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Workout not found or error occurred."];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            return;
+        }
+
+        HKWorkout *workout = (HKWorkout*)[results firstObject];
+        [self fetchAllRoutesForWorkout:workout withCommand:command];
+    }];
+
+    [[HealthKit sharedHealthStore] executeQuery:workoutQuery];
+}
+
+- (void)fetchAllRoutesForWorkout:(HKWorkout*)workout withCommand:(CDVInvokedUrlCommand*)command {
+    NSMutableArray *locationsArray = [NSMutableArray array];
+    NSPredicate *predicate = [HKQuery predicateForObjectsFromWorkout:workout];
+    HKSampleType *routeType = [HKSeriesType workoutRouteType];
+    
+    HKSampleQuery *routeQuery = [[HKSampleQuery alloc] initWithSampleType:routeType predicate:predicate limit:HKObjectQueryNoLimit sortDescriptors:nil resultsHandler:^(HKSampleQuery *query, NSArray *results, NSError *error) {
+        if (error || results.count == 0) {
+            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"No routes found or error occurred."];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            return;
+        }
+
+        __block NSUInteger remainingRoutes = results.count;
+        __block BOOL hasErrorOccurred = NO;
+
+        for (HKWorkoutRoute *route in results) {
+            [self fetchLocationDataForRoute:route withLocationsArray:locationsArray completion:^(BOOL success, NSError *error) {
+                if (!success || error) {
+                    hasErrorOccurred = YES;
+                    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Error fetching route data."];
+                    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    return;
+                }
+
+                remainingRoutes--;
+
+                // Check if all routes have been processed
+                if (remainingRoutes == 0 && !hasErrorOccurred) {
+                    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:locationsArray];
+                    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                }
+            }];
+        }
+    }];
+
+    [[HealthKit sharedHealthStore] executeQuery:routeQuery];
+}
+
+- (void)fetchLocationDataForRoute:(HKWorkoutRoute*)route withLocationsArray:(NSMutableArray*)locationsArray completion:(void (^)(BOOL success, NSError *error))completion {
+    __block BOOL hasErrorOccurred = NO;
+
+    HKWorkoutRouteQuery *query = [[HKWorkoutRouteQuery alloc] initWithRoute:route dataHandler:^(HKWorkoutRouteQuery *query, NSArray<CLLocation *> *locations, BOOL done, NSError *error) {
+        if (error) {
+            hasErrorOccurred = YES;
+            completion(NO, error);
+            return;
+        }
+
+        for (CLLocation *location in locations) {
+            NSDictionary *locationDict = @{
+                @"lat": @(location.coordinate.latitude),
+                @"lng": @(location.coordinate.longitude),
+                @"alt": @(location.altitude),
+                @"timestamp": @([location.timestamp timeIntervalSince1970] * 1000)  // Convert to milliseconds
+            };
+            [locationsArray addObject:locationDict];
+        }
+
+        // Check if this is the final batch of locations for this route
+        if (done && !hasErrorOccurred) {
+            completion(YES, nil);  // Indicate success after all locations are fetched
+        }
+    }];
+
+    [[HealthKit sharedHealthStore] executeQuery:query];
+}
+
+- (void)queryHeartRateDuringWorkout:(CDVInvokedUrlCommand*)command {
+    NSString *workoutUUID = [command.arguments objectAtIndex:0];
+
+    // Fetch the workout from HealthKit using the UUID
+    NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:workoutUUID];
+    NSPredicate *predicate = [HKQuery predicateForObjectWithUUID:uuid];
+
+    HKSampleQuery *workoutQuery = [[HKSampleQuery alloc] initWithSampleType:[HKObjectType workoutType] predicate:predicate limit:1 sortDescriptors:nil resultsHandler:^(HKSampleQuery *query, NSArray *results, NSError *error) {
+        if (!results || error || results.count == 0) {
+            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Workout not found or error occurred."];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            return;
+        }
+
+        HKWorkout *workout = (HKWorkout*)[results firstObject];
+        [self fetchHeartRateForWorkout:workout withCommand:command];
+    }];
+
+    [[HealthKit sharedHealthStore] executeQuery:workoutQuery];
+}
+
+- (void)fetchHeartRateForWorkout:(HKWorkout*)workout withCommand:(CDVInvokedUrlCommand*)command {
+    HKQuantityType *heartRateType = [HKObjectType quantityTypeForIdentifier:HKQuantityTypeIdentifierHeartRate];
+
+    // Create a predicate to fetch heart rate samples during the workout period
+    NSPredicate *predicate = [HKQuery predicateForSamplesWithStartDate:workout.startDate endDate:workout.endDate options:HKQueryOptionStrictStartDate];
+
+    HKSampleQuery *heartRateQuery = [[HKSampleQuery alloc] initWithSampleType:heartRateType predicate:predicate limit:HKObjectQueryNoLimit sortDescriptors:nil resultsHandler:^(HKSampleQuery *query, NSArray *results, NSError *error) {
+        if (error) {
+            CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Error fetching heart rate data."];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            return;
+        }
+
+        NSMutableArray *heartRateArray = [NSMutableArray array];
+        for (HKQuantitySample *sample in results) {
+            double heartRate = [sample.quantity doubleValueForUnit:[HKUnit unitFromString:@"count/min"]];
+            NSDate *timestamp = sample.startDate;
+            NSDictionary *heartRateDict = @{
+                @"bpm": @(heartRate),
+                @"timestamp": @([timestamp timeIntervalSince1970] * 1000)  // Convert to milliseconds since epoch
+            };
+            [heartRateArray addObject:heartRateDict];
+        }
+
+        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:heartRateArray];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    }];
+
+    [[HealthKit sharedHealthStore] executeQuery:heartRateQuery];
 }
 
 @end

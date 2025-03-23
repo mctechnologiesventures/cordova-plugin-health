@@ -2,7 +2,6 @@ package org.apache.cordova.health;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.util.Patterns;
 import android.webkit.WebView;
 
 public class PermissionsRationaleActivity extends Activity {

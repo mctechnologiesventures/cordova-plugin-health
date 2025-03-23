@@ -10,13 +10,13 @@ This work is based on [cordova healthkit plugin](https://github.com/Telerik-Veri
 For bugs and improvements use the [issues tracker](https://github.com/dariosalvi78/cordova-plugin-health/issues).
 For general question or small issue, please use the [gitter channel](https://gitter.im/cordova-plugin-health/Lobby).
 
-## Warning about the new version (3+)
+## About the new version (3+)
 
-This is a complete rewrite of the Android version of the plugin to support the new [HealthConnect API](https://developer.android.com/health-and-fitness/guides/health-connect). Google Fit APIs are deprecated and [will be made obsolete in 2024](https://developer.android.com/health-and-fitness/guides/health-connect/migrate/comparison-guide#turn-down-fit-android).
+This is a complete rewrite of the Android version of the plugin to support the new [HealthConnect API](https://developer.android.com/health-and-fitness/guides/health-connect). Google Fit APIs are deprecated and [will be made obsolete in 2025](https://developer.android.com/health-and-fitness/guides/health-connect/migrate/comparison-guide#turn-down-fit-android).
 
 Google Fit is no longer supported by this plugin. If, for any masochistic reason, you want to use Google Fit, you need to use an older version of this pluign (2.1.1).
 
-Please be remindful that ***THIS IS STILL A WORK-IN-PROGRESS***. While all functionalities listed here are implemented and working, there are several data types that were supported in older versions and are not supported in this version *YET*.
+Please be remindful that this is a work-in-progress.
 If you need support for a given data type, please check if it is already implemented in iOS, then either add support in Java and send a pull request, or add an issue and I will prioritize it.
 
 ## Installation
@@ -37,21 +37,21 @@ cordova plugin add cordova-plugin-health --variable HEALTH_READ_PERMISSION='App 
 
 ## Android requirements
 
-* HealthConnect is made standard on (Google versions of) Android [from version 14 (API level 34)](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-1). On older versions of Android, the user has to install the Health Connect app from the Play Store.
-* Health Connect SDK supports Android 8 (API level 26) or higher, while the Health Connect app is only compatible with Android 9 (API level 28) or higher see [this](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-2).
-* Health Connect SDK requires targeting Android API level 34. The current cordova-android package (12.0.1) targets version 33 and uses a version of Gradle that is incompatible with API level 34, so you need to fix the versions of gradle (to 8.4), gradle plugin (to 8.1.1), target SDK version (to 34) and minimum SDK version (to 26). Add the following to the config.xml of your cordova app project:
+* HealthConnect is made standard on (Google versions of) Android [from version 14 (API level 34)](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-1). On older versions of Android, the user has to install the Health Connect app from the Play Store. Be aware that the Health Connect app is only compatible with Android 9 (API level 28) or higher see [this](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started#step-2).
+* Health Connect SDK used here (v 1.1.0-alpha10) needs to target Android 15 (API level 35) and the minimum SDK level should be 26. Also Gradle and Android Gradle Plugin (AGP) should be recent, versions 8.7 for Gradle and 8.6.0 for the Android Plugin work.
+As the lateste version of cordova Android usually use older versions, it is necessary to configure those more updated versions in to the config.xml of your cordova app project. For example:
 ```xml
 <platform name="android">
   ...
-  <preference name="GradleVersion" value="8.4" />
-  <preference name="AndroidGradlePluginVersion" value="8.1.1" />
   <preference name="android-minSdkVersion" value="26" />
-  <preference name="android-targetSdkVersion" value="34" />
+  <preference name="android-targetSdkVersion" value="35" />
+  <preference name="GradleVersion" value="8.7" />
+  <preference name="AndroidGradlePluginVersion" value="8.6.0" />
   ...
 <platform>
 ```
 Additionally, there are issues with some kotlin depenendencies which are fixed automatically by the plugin in `src/android/build-extras.gradle`. All these hacks will hopefully be removed with future versions of the cordova-android platform.
-* Download a recent version of gradle (8.4 or later).
+* Download a recent version of gradle (8.7 or later).
 * If you use Android Studio, download at least version Hedgehog.
 * Be aware that Health Connect requires the user to have screen lock enabled with a PIN, pattern, or password.
 * When publishing the app, you need to comply to [these requests from Google](https://developer.android.com/health-and-fitness/guides/health-connect/publish/request-access).
@@ -124,14 +124,14 @@ Capacitor does not automatically include all changes to AndroidManifest.xml or g
 ```
 5. modify the main build.gradle file and update:
 ```gradle
-classpath 'com.android.tools.build:gradle:8.1.1'
+classpath 'com.android.tools.build:gradle:8.6.0'
 ```
 
 6. modify the variables.gradle file, particularly:
 ```gradle
 minSdkVersion = 26
-targetSdkVersion = 34
-compileSdkVersion = 34
+targetSdkVersion = 35
+compileSdkVersion = 35
 ```
 
 ## Supported data types
@@ -155,10 +155,20 @@ These are currently supported in both Android and iOS. Please notice that older 
 | calories.basal  | kcal  | HKQuantityTypeIdentifierBasalEnergyBurned     | BasalMetabolicRateRecord * time window   |
 | calories        | kcal  | HKQuantityTypeIdentifierActiveEnergyBurned + HKQuantityTypeIdentifierBasalEnergyBurned | TotalCaloriesBurnedRecord |
 | heart_rate      | bpm   | HKQuantityTypeIdentifierHeartRate             | HeartRateRecord                          |
+| heart_rate.resting | bpm | HKQuantityTypeIdentifierRestingHeartRate     | HeartRateRecord                          |
+| heart_rate.variability | bpm | HKQuantityTypeIdentifierHeartRateVariabilitySDNN | HeartRateRecord                   |
+| workout_route   | bpm   | HKWorkoutRouteType                            | NA                                       |
 | blood_glucose   | mmol/L | HKQuantityTypeIdentifierBloodGlucose         | BloodGlucoseRecord                       |
+| blood_pressure  | mmHg  | HKCorrelationTypeIdentifierBloodPressure      | BloodPressureRecord                      |
 | mindfulness     | sec   | HKCategoryTypeIdentifierMindfulSession        | NA                                       |
-| UVexposure      | count | HKQuantityTypeIdentifierUVExposure            | NA        |
-
+| UVexposure      | count | HKQuantityTypeIdentifierUVExposure            | NA                                       |
+| nutrition       | nutrition | HKCorrelationTypeIdentifierFood           | NutritionRecord                          |
+| nutrition.carbs.total | g | HKQuantityTypeIdentifierDietaryCarbohydrates | NutritionRecord, TOTAL_CARBOHYDRATE_TOTAL |
+| nutrition.fat.total | g | HKQuantityTypeIdentifierDietaryFatTotal       | NutritionRecord, TOTAL_FAT_TOTAL         |
+| nutrition.protein | g   | HKQuantityTypeIdentifierDietaryProtein        | NutritionRecord, PROTEIN_TOTAL           |
+| nutrition.calories | kcal | HKQuantityTypeIdentifierDietaryEnergyConsumed | NutritionRecord, ENERGY_TOTAL          |
+| nutrition.water | ml    | HKQuantityTypeIdentifierDietaryWater          | HydrationRecord, TYPE_HYDRATION         |
+| nutrition.sugar | g     | HKQuantityTypeIdentifierDietarySugar          | NutritionRecord, NUTRIENT_SUGAR           |
 
 
 **Note**: units of measurement are fixed!
@@ -194,9 +204,14 @@ Example values:
 | sleep       | 'sleep.light' <br />**Notes**: recognized sleep stages and their mappings in HealthConnect / HealthKit can be found [here](sleep_map.md) <br> in Android it is also possible to retrieve an entire session, in which case the value is an array of sleep stages [ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ...] |
 | calories.X     | 245.3                             |
 | heart_rate     | 66                                |
-| blood_glucose  | { glucose: 5.5, meal: 'breakfast', sleep: 'fully_awake', source: 'capillary_blood' }<br />**Notes**: to convert to mg/dL, multiply by `18.01559` ([The molar mass of glucose is 180.1559](http://www.convertunits.com/molarmass/Glucose)). `meal` can be: 'before_' / 'after_' / 'fasting_' (Android only) + 'meal' (iOS only) / 'breakfast' / 'dinner' / 'lunch' / 'snack' / 'unknown'. `sleep` can be (iOS only): 'fully_awake', 'before_sleep', 'on_waking', 'during_sleep'. `source` can be: 'capillary_blood' ,'interstitial_fluid', 'plasma', 'serum', 'tears', whole_blood', 'unknown'|
+| heart_rate.resting | 66                            |
+| heart_rate.variability | 25                        |
+| blood_glucose  | { glucose: 5.5, meal: 'breakfast', sleep: 'fully_awake', source: 'capillary_blood' }<br />**Notes**: to convert to mg/dL, [multiply by `18.01559`](http://www.convertunits.com/molarmass/Glucose)). `meal` can be: 'before_' / 'after_' / 'fasting_' (Android only) + 'meal' (iOS only) / 'breakfast' / 'dinner' / 'lunch' / 'snack' / 'unknown'. `sleep` can be (iOS only): 'fully_awake', 'before_sleep', 'on_waking', 'during_sleep'. `source` can be: 'capillary_blood' ,'interstitial_fluid', 'plasma', 'serum', 'tears', whole_blood', 'unknown'|
+| blood_pressure | { systolic: 110, diastolic: 70, body_position: 'reclining', location: 'left_wrist' } >**Notes**: body_position can be 'standing_up', 'sitting_down', 'lying_down', 'reclining' and location can be 'left_wrist', 'right_wrist', 'left_upper_arm', 'right_upper_arm'. These two are only available in Android |
 | mindfulness    | 1800 <br/>**Notes**: only available on iOS |
 | UVexposure     | 12 <br/>**Notes**: only available on iOS |
+| nutrition.X | 234.9 <br/>**Notes**: for the unit, see the coresponding type in the table above |
+| nutrition      | { item: "cheese", meal_type: "lunch", brand_name: "Cheddar", nutrients: { 'fat.total': 11.5, 'calories': 233.1 } } <br/>**Note**: the `brand_name` property is only available on iOS <br> For the units of each nutrient, see the coresponding type in the table above <br/> Water is treated separately in Android, you will never be able to associate water with the general `nutrition`, use `nutrition.water` instead |
 
 
 ## Methods
@@ -213,7 +228,7 @@ cordova.plugins.health.isAvailable(successCallback, errorCallback)
 - errorCallback: called if something went wrong, err contains a textual description of the problem
 
 
-### getHealthConnectFromStore()
+### getHealthConnectFromStore() Android only
 
 Android only. Launches the PlayStore to retrieve HealthConnect. From Android 14 and up this is not needed, becuase HealthConnect becomes part of the operating system.
 
@@ -254,7 +269,7 @@ If the user has already granted permissions to the app, this function will not p
 
 
 ```javascript
-cordova.plugins.requestAuthorization(datatypes, successCallback, errorCallback)
+cordova.plugins.health.requestAuthorization(datatypes, successCallback, errorCallback)
 ```
 
 - datatypes: an object containing data types you want to be granted access to. Example:
@@ -325,6 +340,11 @@ cordova.plugins.health.query({
 - filterOutUserInput: optional, if true, filters out user-entered activities (iOS only)
 - includeCalories: optional, used only for dataType "activity". When querying, for each activity, also the active calories (in kcal) will be added. ***Warning*** the app requires access to calories.active to be granted
 - includeDistance: optional, used only for dataType "activity". When querying, for each activity, also the distance, run or cycled, (in m) will be added. ***Warning*** the app requires access to distance to be granted
+- includeRoute: iOS only, optional, use only for dataType "activity". When querying, for each activity, also the route will be added. ***Warning*** the app requires access to workout_route to be granted. 
+   - if true, the activity contains a field `route`, the route is an array of `{ lat: number, lng: number, alt: number, timestamp: Date }` objects. 
+   - If the activity contains multiple routes (e.g. the workout was paused), these are concatenated in the same array. Therefore do not try to calculate the distance from the route, but use the distance field instead.
+- includeHeartRate: iOS only, optional, use only for dataType "activity". When querying, for each activity, also the heart rate will be added. ***Warning*** the app requires access to heart_rate to be granted
+   - if true, the activity contains a field `heartRate` with an array of `{ bpm: number, timestamp: Date }` objects.
 - successCallback: called if all OK, argument contains the result of the query in the form of an array of: { startDate: Date, endDate: Date, value: xxx, unit: 'xxx', sourceName: 'aaaa', sourceBundleId: 'bbbb' }
 - errorCallback: called if something went wrong, argument contains a textual description of the problem
 
@@ -334,7 +354,7 @@ cordova.plugins.health.query({
 - HealthKit does not detect activities automatically - these must be input from an app
 - When querying for activities, only events whose startDate and endDate are **both** in the query range will be returned.
 - When duration (in seconds) is returned, this may be different than the endTime - startTime and actually more accurate.
-
+- nutrition: vitamin_a is given in micrograms. Automatic conversion to international units is not trivial and depends on the actual substance (see [here](https://dietarysupplementdatabase.usda.nih.gov/ingredient_calculator/help.php#q9)).
 
 #### Android quirks
 
@@ -382,9 +402,13 @@ The following table shows what types are supported and examples of the returned 
 | calories.active | { startDate: Date, endDate: Date, value: 25698.4, unit: 'kcal' } |
 | calories.basal  | { startDate: Date, endDate: Date, value: 3547.3, unit: 'kcal' } |
 | activity        | Android: { startDate: Date, endDate: Date, value: 567000, unit: 'ms' } <br /> iOS: { startDate: Date, endDate: Date, value: { still: { duration: 520000 }, walking: { duration: 223000 }}, unit: 'activitySummary' }<br />**Note:** durations are expressed in milliseconds |
-| sleep           | { startDate: Date, endDate: Date, value: 493, unit: 's' }  <br/>**Notes**: Android iOS |
+| sleep           | { startDate: Date, endDate: Date, value: 493, unit: 's' }  <br/>**Notes**: Android only |
 | appleExerciseTime | { startDate: Date, endDate: Date, value: 500, unit: 'min' }  <br/>**Notes**: iOS only |
 | heart_rate        | { startDate: Date, endDate: Date, value: { average: 72, min: 68, max: 82 }, unit: 'bpm' } |
+| heart_rate.resting| { startDate: Date, endDate: Date, value: { average: 72, min: 68, max: 82 }, unit: 'bpm' } |
+| heart_rate.variability| { startDate: Date, endDate: Date, value: { average: 36, min: 24, max: 48 }, unit: 'ms' } <br/>**Notes**: iOS only |
+| nutrition       | { startDate: Date, endDate: Date, value: { fat.total: 11.5, calories: 233.1 }, unit: 'nutrition' }<br />**Note:** units of measurement for nutrients are fixed according to the table at the beginning of this README |
+| blood_pressure  | { startDate: Date, endDate: Date, value: {diastolic_average: 80, systolic_average: 120, diastolic_max: 85, systolic_max: 132, diastolic_min: 74, systolic_min: 112 }, unit: 'mmHg' }  <br/>**Notes**: Android only |
 
 
 #### Quirks
@@ -399,7 +423,7 @@ The following table shows what types are supported and examples of the returned 
 #### Android quirks
 
 - Currently, it is not possible to group by activity type in aggregated queries, only the total time for all activities can be returned. See discussion [here](https://stackoverflow.com/questions/77512832/how-to-aggregate-by-exercise-type-in-the-android-health-connect-api/77512845#77512845).
-- When storing heart_rate, you can also provide the value as an array of [ {bpm: 81, timestamp: Date }, ... ]. This is how the heart rate is actually stored internally and is probably and more efficient.
+
 
 ### store()
 
@@ -433,10 +457,12 @@ cordova.plugins.health.store({
 #### Android quirks
 
 - This operation correponds to an insert, not an update. If you want to update the data point you need to delete it first.
-- Not all datatypes support start and end timestamps, some, such as weight, only have one timestamp. The plugin will use the start timestamp to set the actual one.
+- Not all datatypes support start and end timestamps, some, such as weight, only have one timestamp. The plugin will use the start timestamp to set the end timestamp when querying.
 - In Android you can only store basal rate, that is a power. This is estimated from the kcals provided as an argument, divided by the time between the start and end time. When you query the individual sample, you get the kcal/day back, not the kcal, unless you do an aggregated query.
-- sleep in HealthConnect is stored in sessions composed of stages. By default, this function will store each stage as an indipendent session, but if you want to aggregate the stages into a single session, use the flag: `sleepSession: true` and use an array of objects like `[ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ... ]` as value.
-
+- When storing `heart_rate`, you can also provide the value as an array of [ {bpm: 81, timestamp: Date }, ... ]. This is how the heart rate is actually stored internally and is probably more efficient.
+- `sleep` in HealthConnect is stored in sessions composed of stages. By default, this function will store each stage as an indipendent session, but if you want to aggregate the stages into a single session, use the flag: `sleepSession: true` and use an array of objects like `[ { startDate: Date, endDate: Date, stage: 'sleep.light' }, ... ]` where each object is a stage, as value.
+- `nutrition` in Android is always associated to a specific food item. When storing a single nutrient, like nutrition.sugar, the plugin creates an empty food item with that nutrient. Use food items when possible.
+- `nutrition.water` is treated separately in Android than the other nutrients, and cannot be associated to a specific food item. This also means that you cannot add it to a `nutrition` item, nor will you find it when querying `nutrition`.
 
 ### delete()
 

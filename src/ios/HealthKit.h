@@ -157,4 +157,8 @@
  */
 - (void)deleteSamples:(CDVInvokedUrlCommand *)command;
 
+- (void)queryWorkoutRoutes:(CDVInvokedUrlCommand*)command;
+
+- (void)queryHeartRateDuringWorkout:(CDVInvokedUrlCommand*)command;
+
 @end

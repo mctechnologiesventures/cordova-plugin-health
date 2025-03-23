@@ -41,20 +41,22 @@ public class WeightFunctions {
     }
 
     public static void populateFromAggregatedQuery(AggregationResult response, JSONObject retObj) throws JSONException {
+        JSONObject weightStats = new JSONObject();
+
         if (response.get(WeightRecord.WEIGHT_AVG) != null) {
-            JSONObject weightStats = new JSONObject();
             double metersAvg = response.get(WeightRecord.WEIGHT_AVG).getKilograms();
             weightStats.put("average", metersAvg);
+        }
+        if (response.get(WeightRecord.WEIGHT_MIN) !=null) {
             double metersMin = response.get(WeightRecord.WEIGHT_MIN).getKilograms();
             weightStats.put("min", metersMin);
+        }
+        if (response.get(WeightRecord.WEIGHT_MAX) !=null) {
             double metersMax = response.get(WeightRecord.WEIGHT_MAX).getKilograms();
             weightStats.put("max", metersMax);
+        }
             retObj.put("value", weightStats);
             retObj.put("unit", "kg");
-        } else {
-            retObj.put("value", null);
-            retObj.put("unit", "kg");
-        }
     }
 
     public static AggregateGroupByPeriodRequest prepareAggregateGroupByPeriodRequest (TimeRangeFilter timeRange, Period period, HashSet<DataOrigin> dor) {

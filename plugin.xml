@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
   id="cordova-plugin-health"
-  version="3.2.0">
+  version="3.2.4">
 
   <name>Cordova Health</name>
 
@@ -86,9 +86,7 @@
 
   <!-- android -->
   <platform name="android">
-    <framework src="androidx.health.connect:connect-client:1.1.0-alpha02" />
-    <framework src="org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3" />
-
+    <framework src="androidx.health.connect:connect-client:1.1.0-beta01" />
     <framework src="src/android/build-extras.gradle" custom="true" type="gradleReference" />
 
     <config-file target="AndroidManifest.xml" parent="/*">
@@ -141,8 +139,16 @@
     <source-file src="src/android/StepsFunctions.java" target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/WeightFunctions.java" target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/HeightFunctions.java" target-dir="src/org/apache/cordova/health/" />
+    <source-file src="src/android/NutritionFunctions.java"
+      target-dir="src/org/apache/cordova/health/" />
+    <source-file src="src/android/HydrationFunctions.java"
+      target-dir="src/org/apache/cordova/health/" />
+    <source-file src="src/android/NutritionXFunctions.java"
+      target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/SleepFunctions.java" target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/BloodGlucoseFunctions.java"
+      target-dir="src/org/apache/cordova/health/" />
+    <source-file src="src/android/BloodPressureFunctions.java"
       target-dir="src/org/apache/cordova/health/" />
     <source-file src="src/android/HeartRateFunctions.java"
       target-dir="src/org/apache/cordova/health/" />

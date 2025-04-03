@@ -662,7 +662,12 @@ public class HealthPlugin extends CordovaPlugin {
                 // int year, Month month, int dayOfMonth, int hour, int minute, int second
                 LocalDateTime stLDT;
                 LocalDateTime etLDT = LocalDateTime.from(etZDT);
-                if (bucketType.equalsIgnoreCase("hour")) {
+                if (bucketType.equalsIgnoreCase("minute")) {
+                  stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), stZDT.getDayOfMonth(),
+                            stZDT.getHour(), stZDT.getMinute(), 0, 0);
+                    // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(),
+                    // etZDT.getDayOfMonth(), etZDT.getHour(), etZDT.getMinute(), 0, 0);
+                } else if (bucketType.equalsIgnoreCase("hour")) {
                     stLDT = LocalDateTime.of(stZDT.getYear(), stZDT.getMonth(), stZDT.getDayOfMonth(), stZDT.getHour(),
                             0, 0, 0);
                     // etLDT = LocalDateTime.of(etZDT.getYear(), etZDT.getMonth(),
@@ -692,7 +697,9 @@ public class HealthPlugin extends CordovaPlugin {
 
                 Duration duration = null;
                 Period period = null;
-                if (bucketType.equalsIgnoreCase("hour")) {
+                if (bucketType.equalsIgnoreCase("minute")) {
+                  duration = Duration.ofMinutes(1);
+                } else if (bucketType.equalsIgnoreCase("hour")) {
                     duration = Duration.ofHours(1);
                 } else if (bucketType.equalsIgnoreCase("day")) {
                     period = Period.ofDays(1);

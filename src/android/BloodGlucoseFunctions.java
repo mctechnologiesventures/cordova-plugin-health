@@ -141,11 +141,11 @@ public class BloodGlucoseFunctions {
 
         BloodGlucoseRecord record = new BloodGlucoseRecord(
                 Instant.ofEpochMilli(st),null,
+                Metadata.manualEntry(),
                 level,
                 specimenSource,
                 mealType,
-                relationToMeal,
-                Metadata.manualEntry());
+                relationToMeal);
 
         data.add(record);
     }

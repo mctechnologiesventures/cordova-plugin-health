@@ -1049,9 +1049,9 @@ public class HealthPlugin extends CordovaPlugin {
                 ExerciseSessionRecord record = new ExerciseSessionRecord(
                         Instant.ofEpochMilli(st), null,
                         Instant.ofEpochMilli(et), null,
+                        Metadata.manualEntry(),
                         exerciseType,
                         title, notes,
-                        Metadata.manualEntry(),
                         segments, laps);
                 data.add(record);
             } else if (datatype.equalsIgnoreCase("calories")) {

@@ -148,112 +148,119 @@ public class HealthPlugin extends CordovaPlugin {
      */
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) {
         this.callbackContext = callbackContext;
-        if (action.equals("isAvailable")) {
-            int availabilityStatus = HealthConnectClient.getSdkStatus(this.cordova.getContext());
-            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
-                callbackContext.error("Health Connect is not available");
-                return true;
-            }
-            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
-                callbackContext.error("Health Connect is not installed");
-                return true;
-            }
+      switch (action) {
+        case "isAvailable":
+          int availabilityStatus = HealthConnectClient.getSdkStatus(this.cordova.getContext());
+          if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
+            callbackContext.error("Health Connect is not available");
+            return true;
+          }
+          if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+            callbackContext.error("Health Connect is not installed");
+            return true;
+          }
 
-            callbackContext.success();
-        } else if (action.equals("getHealthConnectFromStore")) {
-            String uriString = "market://details?id=com.google.android.apps.healthdata";
-            Intent launchAppStore = new Intent(Intent.ACTION_VIEW);
-            launchAppStore.setPackage("com.android.vending");
-            launchAppStore.setData(Uri.parse(uriString));
-            launchAppStore.putExtra("overlay", true);
-            launchAppStore.putExtra("callerId", this.cordova.getContext().getPackageName());
-            this.cordova.getContext().startActivity(launchAppStore);
+          callbackContext.success();
+          break;
+        case "getHealthConnectFromStore":
+          String uriString = "market://details?id=com.google.android.apps.healthdata";
+          Intent launchAppStore = new Intent(Intent.ACTION_VIEW);
+          launchAppStore.setPackage("com.android.vending");
+          launchAppStore.setData(Uri.parse(uriString));
+          launchAppStore.putExtra("overlay", true);
+          launchAppStore.putExtra("callerId", this.cordova.getContext().getPackageName());
+          this.cordova.getContext().startActivity(launchAppStore);
 
-            callbackContext.success();
-        } else if (action.equals("launchPrivacyPolicy")) {
-            Activity currentActivity = this.cordova.getActivity();
-            Intent activityIntent = new Intent(currentActivity, PermissionsRationaleActivity.class);
-            currentActivity.startActivity(activityIntent);
-            callbackContext.success();
-        } else if (action.equals("openHealthSettings")) {
-            Activity currentActivity = this.cordova.getActivity();
-            try {
-                if (Build.VERSION.SDK_INT < 34) {
-                    Intent activityIntent = new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
-                    currentActivity.startActivity(activityIntent);
-                    callbackContext.success();
-                } else {
-                    Intent activityIntent = new Intent(HealthConnectClient.getHealthConnectSettingsAction());
-                    currentActivity.startActivity(activityIntent);
-                    callbackContext.success();
-                }
-            } catch (Exception ex) {
-                callbackContext.error(ex.getMessage());
-            }
-        } else if ("isAuthorized".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    checkAuthorization(args, false);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else if ("requestAuthorization".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    checkAuthorization(args, true);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else if ("query".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    query(args);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else if ("queryAggregated".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    queryAggregated(args);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else if ("store".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    store(args);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else if ("delete".equals(action)) {
-            cordova.getThreadPool().execute(() -> {
-                try {
-                    connectAPI();
-                    delete(args);
-                } catch (Exception ex) {
-                    callbackContext.error(ex.getMessage());
-                }
-            });
-            return true;
-        } else {
-            // Unsupported action
-            return false;
+          callbackContext.success();
+          break;
+        case "launchPrivacyPolicy": {
+          Activity currentActivity = this.cordova.getActivity();
+          Intent activityIntent = new Intent(currentActivity, PermissionsRationaleActivity.class);
+          currentActivity.startActivity(activityIntent);
+          callbackContext.success();
+          break;
         }
+        case "openHealthSettings": {
+          Activity currentActivity = this.cordova.getActivity();
+          try {
+            if (Build.VERSION.SDK_INT < 34) {
+              Intent activityIntent = new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
+              currentActivity.startActivity(activityIntent);
+              callbackContext.success();
+            } else {
+              Intent activityIntent = new Intent(HealthConnectClient.getHealthConnectSettingsAction());
+              currentActivity.startActivity(activityIntent);
+              callbackContext.success();
+            }
+          } catch (Exception ex) {
+            callbackContext.error(ex.getMessage());
+          }
+          break;
+        }
+        case "isAuthorized":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              checkAuthorization(args, false);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        case "requestAuthorization":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              checkAuthorization(args, true);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        case "query":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              query(args);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        case "queryAggregated":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              queryAggregated(args);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        case "store":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              store(args);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        case "delete":
+          cordova.getThreadPool().execute(() -> {
+            try {
+              connectAPI();
+              delete(args);
+            } catch (Exception ex) {
+              callbackContext.error(ex.getMessage());
+            }
+          });
+          return true;
+        default:
+          // Unsupported action
+          return false;
+      }
         return true;
     }
 
@@ -647,6 +654,7 @@ public class HealthPlugin extends CordovaPlugin {
             HashSet<DataOrigin> dor = new HashSet<>();
 
             if (hasbucket) {
+
                 String bucketType = args.getJSONObject(0).getString("bucket");
                 ZonedDateTime stZDT = ZonedDateTime.ofInstant(Instant.ofEpochMilli(st), ZoneId.systemDefault());
                 ZonedDateTime etZDT = ZonedDateTime.ofInstant(Instant.ofEpochMilli(et), ZoneId.systemDefault());

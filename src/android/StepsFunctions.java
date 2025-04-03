@@ -34,6 +34,7 @@ public class StepsFunctions {
         obj.put("endDate", stepsDP.getEndTime().toEpochMilli());
 
         long steps = stepsDP.getCount();
+        obj.put("sourceName", stepsDP.getMetadata().getDataOrigin().getPackageName());
         obj.put("value", steps);
         obj.put("unit", "count");
     }
@@ -43,6 +44,9 @@ public class StepsFunctions {
             long val = response.get(StepsRecord.COUNT_TOTAL);
             retObj.put("value", val);
             retObj.put("unit", "count");
+            if (!response.getDataOrigins().isEmpty()) {
+                retObj.put("sourceName", response.getDataOrigins().iterator().next().getPackageName());
+            }
         } else {
             retObj.put("value", 0);
             retObj.put("unit", "count");

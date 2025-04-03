@@ -693,7 +693,8 @@ public class HealthPlugin extends CordovaPlugin {
                     callbackContext.error("Bucket not recognized " + bucketType);
                     return;
                 }
-                TimeRangeFilter timeRange = TimeRangeFilter.between(stLDT, etLDT);
+
+                TimeRangeFilter timeRange = TimeRangeFilter.between(stZDT.toInstant(), etZDT.toInstant());
 
                 Duration duration = null;
                 Period period = null;

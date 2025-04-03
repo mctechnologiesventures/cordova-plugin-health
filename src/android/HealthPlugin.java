@@ -716,6 +716,7 @@ public class HealthPlugin extends CordovaPlugin {
                 }
                 if (period != null) {
                     AggregateGroupByPeriodRequest request;
+                    timeRange = TimeRangeFilter.between(stLDT, etLDT);
                     // DATA_TYPE: add here support for new data types
                     if (datatype.equalsIgnoreCase("steps")) {
                         request = StepsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);

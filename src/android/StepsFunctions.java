@@ -75,7 +75,7 @@ public class StepsFunctions {
                 Instant.ofEpochMilli(st), null,
                 Instant.ofEpochMilli(et), null,
                 steps,
-                Metadata.EMPTY
+                Metadata.manualEntry()
         );
         data.add(record);
     }

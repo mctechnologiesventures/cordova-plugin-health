@@ -88,7 +88,7 @@ public class HeightFunctions {
             HeightRecord record = new HeightRecord(
                     Instant.ofEpochMilli(st), null,
                     Length.meters(meters),
-                    Metadata.EMPTY
+                    Metadata.manualEntry()
             );
             data.add(record);
         }

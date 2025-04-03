@@ -250,7 +250,7 @@ public class NutritionFunctions {
                 null,
                 name,
                 mealType,
-                Metadata.EMPTY);
+                Metadata.manualEntry());
         data.add(record);
     }
 

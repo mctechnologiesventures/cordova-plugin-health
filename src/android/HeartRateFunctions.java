@@ -128,7 +128,7 @@ public class HeartRateFunctions {
                 Instant.ofEpochMilli(st), null,
                 Instant.ofEpochMilli(et), null,
                 samples,
-                Metadata.EMPTY
+                Metadata.manualEntry()
         );
         data.add(hrRecord);
     }
@@ -160,7 +160,7 @@ public class HeartRateFunctions {
             long max = response.get(RestingHeartRateRecord.BPM_MAX);
             hrStats.put("max", max);
         }
-            
+
         retObj.put("value", hrStats);
         retObj.put("unit", "bpm");
     }
@@ -195,7 +195,7 @@ public class HeartRateFunctions {
                 Instant.ofEpochMilli(st),
                 ZoneOffset.from(ZonedDateTime.now()),
                 bpm,
-                Metadata.EMPTY
+                Metadata.manualEntry()
         );
         data.add(record);
     }
@@ -218,7 +218,7 @@ public class HeartRateFunctions {
                 Instant.ofEpochMilli(st),
                 ZoneOffset.from(ZonedDateTime.now()),
                 ms,
-                Metadata.EMPTY
+                Metadata.manualEntry()
         );
         data.add(record);
     }

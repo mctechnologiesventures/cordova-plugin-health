@@ -239,7 +239,7 @@ public class NutritionXFunctions {
                 null,
                 null,
                 mealType,
-                Metadata.EMPTY);
+                Metadata.manualEntry());
         data.add(record);
     }
 }

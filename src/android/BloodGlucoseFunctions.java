@@ -145,7 +145,7 @@ public class BloodGlucoseFunctions {
                 specimenSource,
                 mealType,
                 relationToMeal,
-                Metadata.EMPTY);
+                Metadata.manualEntry());
 
         data.add(record);
     }

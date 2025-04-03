@@ -199,7 +199,7 @@ public class BloodPressureFunctions {
                 pressure_dia,
                 body_position,
                 location,
-                Metadata.EMPTY);
+                Metadata.manualEntry());
 
         data.add(record);
     }

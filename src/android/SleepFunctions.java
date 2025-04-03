@@ -202,7 +202,7 @@ public class SleepFunctions {
                     null,
                     null,
                     stages,
-                    Metadata.EMPTY
+                    Metadata.manualEntry()
             );
             data.add(sleepSession);
 
@@ -233,7 +233,7 @@ public class SleepFunctions {
                     null,
                     null,
                     stages,
-                    Metadata.EMPTY
+                    Metadata.manualEntry()
             );
             data.add(sleepSession);
         }

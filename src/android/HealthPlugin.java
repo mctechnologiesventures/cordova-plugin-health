@@ -29,6 +29,7 @@ import androidx.health.connect.client.records.DistanceRecord;
 import androidx.health.connect.client.records.ExerciseLap;
 import androidx.health.connect.client.records.ExerciseSegment;
 import androidx.health.connect.client.records.ExerciseSessionRecord;
+import androidx.health.connect.client.records.FloorsClimbedRecord;
 import androidx.health.connect.client.records.HeartRateRecord;
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord;
 import androidx.health.connect.client.records.HeightRecord;
@@ -148,119 +149,112 @@ public class HealthPlugin extends CordovaPlugin {
      */
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) {
         this.callbackContext = callbackContext;
-      switch (action) {
-        case "isAvailable":
-          int availabilityStatus = HealthConnectClient.getSdkStatus(this.cordova.getContext());
-          if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
-            callbackContext.error("Health Connect is not available");
-            return true;
-          }
-          if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
-            callbackContext.error("Health Connect is not installed");
-            return true;
-          }
+        if (action.equals("isAvailable")) {
+            int availabilityStatus = HealthConnectClient.getSdkStatus(this.cordova.getContext());
+            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
+                callbackContext.error("Health Connect is not available");
+                return true;
+            }
+            if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+                callbackContext.error("Health Connect is not installed");
+                return true;
+            }
 
-          callbackContext.success();
-          break;
-        case "getHealthConnectFromStore":
-          String uriString = "market://details?id=com.google.android.apps.healthdata";
-          Intent launchAppStore = new Intent(Intent.ACTION_VIEW);
-          launchAppStore.setPackage("com.android.vending");
-          launchAppStore.setData(Uri.parse(uriString));
-          launchAppStore.putExtra("overlay", true);
-          launchAppStore.putExtra("callerId", this.cordova.getContext().getPackageName());
-          this.cordova.getContext().startActivity(launchAppStore);
+            callbackContext.success();
+        } else if (action.equals("getHealthConnectFromStore")) {
+            String uriString = "market://details?id=com.google.android.apps.healthdata";
+            Intent launchAppStore = new Intent(Intent.ACTION_VIEW);
+            launchAppStore.setPackage("com.android.vending");
+            launchAppStore.setData(Uri.parse(uriString));
+            launchAppStore.putExtra("overlay", true);
+            launchAppStore.putExtra("callerId", this.cordova.getContext().getPackageName());
+            this.cordova.getContext().startActivity(launchAppStore);
 
-          callbackContext.success();
-          break;
-        case "launchPrivacyPolicy": {
-          Activity currentActivity = this.cordova.getActivity();
-          Intent activityIntent = new Intent(currentActivity, PermissionsRationaleActivity.class);
-          currentActivity.startActivity(activityIntent);
-          callbackContext.success();
-          break;
+            callbackContext.success();
+        } else if (action.equals("launchPrivacyPolicy")) {
+            Activity currentActivity = this.cordova.getActivity();
+            Intent activityIntent = new Intent(currentActivity, PermissionsRationaleActivity.class);
+            currentActivity.startActivity(activityIntent);
+            callbackContext.success();
+        } else if (action.equals("openHealthSettings")) {
+            Activity currentActivity = this.cordova.getActivity();
+            try {
+                if (Build.VERSION.SDK_INT < 34) {
+                    Intent activityIntent = new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
+                    currentActivity.startActivity(activityIntent);
+                    callbackContext.success();
+                } else {
+                    Intent activityIntent = new Intent(HealthConnectClient.getHealthConnectSettingsAction());
+                    currentActivity.startActivity(activityIntent);
+                    callbackContext.success();
+                }
+            } catch (Exception ex) {
+                callbackContext.error(ex.getMessage());
+            }
+        } else if ("isAuthorized".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    checkAuthorization(args, false);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("requestAuthorization".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    checkAuthorization(args, true);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("query".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    query(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("queryAggregated".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    queryAggregated(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("store".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    store(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else if ("delete".equals(action)) {
+            cordova.getThreadPool().execute(() -> {
+                try {
+                    connectAPI();
+                    delete(args);
+                } catch (Exception ex) {
+                    callbackContext.error(ex.getMessage());
+                }
+            });
+            return true;
+        } else {
+            // Unsupported action
+            return false;
         }
-        case "openHealthSettings": {
-          Activity currentActivity = this.cordova.getActivity();
-          try {
-            if (Build.VERSION.SDK_INT < 34) {
-              Intent activityIntent = new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS");
-              currentActivity.startActivity(activityIntent);
-              callbackContext.success();
-            } else {
-              Intent activityIntent = new Intent(HealthConnectClient.getHealthConnectSettingsAction());
-              currentActivity.startActivity(activityIntent);
-              callbackContext.success();
-            }
-          } catch (Exception ex) {
-            callbackContext.error(ex.getMessage());
-          }
-          break;
-        }
-        case "isAuthorized":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              checkAuthorization(args, false);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        case "requestAuthorization":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              checkAuthorization(args, true);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        case "query":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              query(args);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        case "queryAggregated":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              queryAggregated(args);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        case "store":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              store(args);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        case "delete":
-          cordova.getThreadPool().execute(() -> {
-            try {
-              connectAPI();
-              delete(args);
-            } catch (Exception ex) {
-              callbackContext.error(ex.getMessage());
-            }
-          });
-          return true;
-        default:
-          // Unsupported action
-          return false;
-      }
         return true;
     }
 
@@ -277,6 +271,9 @@ public class HealthPlugin extends CordovaPlugin {
     private KClass<? extends androidx.health.connect.client.records.Record> dataTypeNameToClass(String name) {
         if (name.equalsIgnoreCase("steps")) {
             return StepsFunctions.dataTypeToClass();
+        }
+        if (name.equalsIgnoreCase("stairs")) {
+            return StairsFunctions.dataTypeToClass();
         }
         if (name.equalsIgnoreCase("weight")) {
             return WeightFunctions.dataTypeToClass();
@@ -522,6 +519,8 @@ public class HealthPlugin extends CordovaPlugin {
                     // DATA_TYPES here we need to add support for each different data type
                     if (datapoint instanceof StepsRecord) {
                         StepsFunctions.populateFromQuery(datapoint, obj);
+                    } else if (datapoint instanceof FloorsClimbedRecord) {
+                        StairsFunctions.populateFromQuery(datapoint, obj);
                     } else if (datapoint instanceof WeightRecord) {
                         WeightFunctions.populateFromQuery(datapoint, obj);
                     } else if (datapoint instanceof HeightRecord) {
@@ -720,6 +719,8 @@ public class HealthPlugin extends CordovaPlugin {
                     // DATA_TYPE: add here support for new data types
                     if (datatype.equalsIgnoreCase("steps")) {
                         request = StepsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+                    } else if (datatype.equalsIgnoreCase("stairs")) {
+                        request = StairsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
                     } else if (datatype.equalsIgnoreCase("nutrition")) {
                         request = NutritionFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
                     } else if (datatype.equalsIgnoreCase("nutrition.water")) {
@@ -789,6 +790,8 @@ public class HealthPlugin extends CordovaPlugin {
                     // DATA_TYPE: add here support for new data types
                     if (datatype.equalsIgnoreCase("steps")) {
                         request = StepsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+                    } else if (datatype.equalsIgnoreCase("stairs")) {
+                        request = StairsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
                     } else if (datatype.equalsIgnoreCase("nutrition")) {
                         request = NutritionFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
                     } else if (datatype.equalsIgnoreCase("nutrition.water")) {
@@ -862,6 +865,8 @@ public class HealthPlugin extends CordovaPlugin {
                 // DATA_TYPE add here support for new data types
                 if (datatype.equalsIgnoreCase("steps")) {
                     request = StepsFunctions.prepareAggregateRequest(timeRange, dor);
+                } else if (datatype.equalsIgnoreCase("stairs")) {
+                    request = StairsFunctions.prepareAggregateRequest(timeRange, dor);
                 } else if (datatype.equalsIgnoreCase("nutrition")) {
                     request = NutritionFunctions.prepareAggregateRequest(timeRange, dor);
                 } else if (datatype.equalsIgnoreCase("nutrition.water")) {
@@ -930,6 +935,8 @@ public class HealthPlugin extends CordovaPlugin {
         // DATA_TYPE add here new data types when extending
         if (datatype.equalsIgnoreCase("steps")) {
             StepsFunctions.populateFromAggregatedQuery(response, retObj);
+        } else if (datatype.equalsIgnoreCase("stairs")) {
+            StairsFunctions.populateFromAggregatedQuery(response, retObj);
         } else if (datatype.equalsIgnoreCase("nutrition")) {
             NutritionFunctions.populateFromAggregatedQuery(response, retObj);
         } else if (datatype.equalsIgnoreCase("nutrition.water")) {
@@ -1043,6 +1050,8 @@ public class HealthPlugin extends CordovaPlugin {
 
             if (datatype.equalsIgnoreCase("steps")) {
                 StepsFunctions.prepareStoreRecords(args.getJSONObject(0), st, et, data);
+            } else if (datatype.equalsIgnoreCase("stairs")) {
+                StairsFunctions.prepareStoreRecords(args.getJSONObject(0), st, et, data);
             } else if (datatype.equalsIgnoreCase("weight")) {
                 WeightFunctions.prepareStoreRecords(args.getJSONObject(0), st, data);
             } else if (datatype.equalsIgnoreCase("height")) {

@@ -490,19 +490,34 @@ public class HealthPlugin extends CordovaPlugin {
 
             TimeRangeFilter timeRange = TimeRangeFilter.between(Instant.ofEpochMilli(st), Instant.ofEpochMilli(et));
             HashSet<DataOrigin> dor = new HashSet<>();
-            ReadRecordsRequest request = new ReadRecordsRequest(dt, timeRange, dor, ascending, limit, null);
-            // see https://kt.academy/article/cc-other-languages
-            ReadRecordsResponse response = BuildersKt.runBlocking(
-                    EmptyCoroutineContext.INSTANCE,
-                    (s, c) -> healthConnectClient.readRecords(request, c));
 
-            Log.d(TAG, "Data query successful");
+            // Implement pagination to retrieve all records
+            List<Record> allRecords = new LinkedList<>();
+            String pageToken = null;
+            int pageCount = 0;
+
+            do {
+                ReadRecordsRequest request = new ReadRecordsRequest(dt, timeRange, dor, ascending, limit, pageToken);
+                // see https://kt.academy/article/cc-other-languages
+                ReadRecordsResponse response = BuildersKt.runBlocking(
+                        EmptyCoroutineContext.INSTANCE,
+                        (s, c) -> healthConnectClient.readRecords(request, c));
+
+                allRecords.addAll(response.getRecords());
+                pageToken = response.getPageToken();
+                pageCount++;
+
+                Log.d(TAG, "Fetched page " + pageCount + " with " + response.getRecords().size() + " records");
+
+            } while (pageToken != null);
+
+            Log.d(TAG, "Data query successful - retrieved " + allRecords.size() + " total records across " + pageCount + " page(s)");
             JSONArray resultset = new JSONArray();
             // default behaviour is that each record corresponds to one element in the
             // array, but there can be exceptions
             boolean oneElementPerRecord = true;
 
-            for (Object datapointObj : response.getRecords()) {
+            for (Object datapointObj : allRecords) {
                 if (datapointObj instanceof androidx.health.connect.client.records.Record) {
                     androidx.health.connect.client.records.Record datapoint = (androidx.health.connect.client.records.Record) datapointObj;
                     JSONObject obj = new JSONObject();
@@ -623,6 +638,169 @@ public class HealthPlugin extends CordovaPlugin {
         }
     }
 
+    /**
+     * Creates a Period-based aggregate request for the given data type
+     *
+     * @param datatype The data type to query
+     * @param timeRange The time range filter
+     * @param period The period bucket size
+     * @param dor Data origins filter
+     * @return AggregateGroupByPeriodRequest or null if datatype not recognized
+     */
+    private AggregateGroupByPeriodRequest createPeriodRequest(String datatype, TimeRangeFilter timeRange,
+            Period period, HashSet<DataOrigin> dor) {
+        // DATA_TYPE: add here support for new data types
+        if (datatype.equalsIgnoreCase("steps")) {
+            return StepsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("stairs")) {
+            return StairsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("nutrition")) {
+            return NutritionFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("nutrition.water")) {
+            return HydrationFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.toLowerCase().startsWith("nutrition.")) {
+            return NutritionXFunctions.prepareAggregateGroupByPeriodRequest(datatype, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("weight")) {
+            return WeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("height")) {
+            return HeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("activity")) {
+            Set<AggregateMetric<Duration>> metrics = new HashSet<>();
+            metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+            return new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("calories")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+            return new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("calories.active")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+            return new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("calories.basal")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
+            return new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("distance")) {
+            Set<AggregateMetric<Length>> metrics = new HashSet<>();
+            metrics.add(DistanceRecord.DISTANCE_TOTAL);
+            return new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("sleep")) {
+            return SleepFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("heart_rate")) {
+            return HeartRateFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("heart_rate.resting")) {
+            return HeartRateFunctions.prepareRestingAggregateGroupByPeriodRequest(timeRange, period, dor);
+        } else if (datatype.equalsIgnoreCase("blood_pressure")) {
+            return BloodPressureFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
+        }
+        return null;
+    }
+
+    /**
+     * Creates a Duration-based aggregate request for the given data type
+     *
+     * @param datatype The data type to query
+     * @param timeRange The time range filter
+     * @param duration The duration bucket size
+     * @param dor Data origins filter
+     * @return AggregateGroupByDurationRequest or null if datatype not recognized
+     */
+    private AggregateGroupByDurationRequest createDurationRequest(String datatype, TimeRangeFilter timeRange,
+            Duration duration, HashSet<DataOrigin> dor) {
+        // DATA_TYPE: add here support for new data types
+        if (datatype.equalsIgnoreCase("steps")) {
+            return StepsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("stairs")) {
+            return StairsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("nutrition")) {
+            return NutritionFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("nutrition.water")) {
+            return HydrationFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.toLowerCase().startsWith("nutrition.")) {
+            return NutritionXFunctions.prepareAggregateGroupByDurationRequest(datatype, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("weight")) {
+            return WeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("height")) {
+            return HeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("activity")) {
+            Set<AggregateMetric<Duration>> metrics = new HashSet<>();
+            metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
+            return new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("calories")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
+            return new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("calories.active")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
+            return new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("calories.basal")) {
+            Set<AggregateMetric<Energy>> metrics = new HashSet<>();
+            metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
+            return new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("distance")) {
+            Set<AggregateMetric<Length>> metrics = new HashSet<>();
+            metrics.add(DistanceRecord.DISTANCE_TOTAL);
+            return new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("sleep")) {
+            return SleepFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("heart_rate")) {
+            return HeartRateFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("heart_rate.resting")) {
+            return HeartRateFunctions.prepareRestingAggregateGroupByDurationRequest(timeRange, duration, dor);
+        } else if (datatype.equalsIgnoreCase("blood_pressure")) {
+            return BloodPressureFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
+        }
+        return null;
+    }
+
+    /**
+     * Calculates the expected number of buckets for a given time range and bucket size
+     *
+     * @param startTime Start time for the query
+     * @param endTime End time for the query
+     * @param duration Duration bucket (for hour/minute), null if using period
+     * @param period Period bucket (for day/week/month/year), null if using duration
+     * @return Expected number of buckets
+     */
+    private long calculateExpectedBuckets(Instant startTime, Instant endTime, Duration duration, Period period) {
+        if (duration != null) {
+            // For duration-based buckets (hour, minute)
+            long totalMs = endTime.toEpochMilli() - startTime.toEpochMilli();
+            long bucketMs = duration.toMillis();
+            return (totalMs / bucketMs) + 1; // +1 to account for partial buckets
+        } else if (period != null) {
+            // For period-based buckets (day, week, month, year)
+            // This is approximate since months/years have variable lengths
+            ZonedDateTime start = startTime.atZone(ZoneId.systemDefault());
+            ZonedDateTime end = endTime.atZone(ZoneId.systemDefault());
+
+            long bucketCount = 0;
+            ZonedDateTime current = start;
+
+            // Count buckets by iterating through the time range
+            while (current.isBefore(end) || current.isEqual(end)) {
+                bucketCount++;
+                if (period.getDays() > 0) {
+                    current = current.plusDays(period.getDays());
+                } else if (period.getMonths() > 0) {
+                    current = current.plusMonths(period.getMonths());
+                } else if (period.getYears() > 0) {
+                    current = current.plusYears(period.getYears());
+                }
+
+                // Safety check to prevent infinite loop
+                if (bucketCount > 10000) {
+                    break;
+                }
+            }
+
+            return bucketCount;
+        }
+
+        return 0;
+    }
+
     private void queryAggregated(final JSONArray args) {
         try {
             if (!args.getJSONObject(0).has("startDate")) {
@@ -714,146 +892,184 @@ public class HealthPlugin extends CordovaPlugin {
                     return;
                 }
                 if (period != null) {
-                    AggregateGroupByPeriodRequest request;
+                    // Period-based bucketing (day, week, month, year)
+                    final int MAX_BUCKETS = 5000;
+                    final int SAFE_BUCKET_LIMIT = 4999; // Use 4999 to have a safe margin
+
                     timeRange = TimeRangeFilter.between(stLDT, etLDT);
-                    // DATA_TYPE: add here support for new data types
-                    if (datatype.equalsIgnoreCase("steps")) {
-                        request = StepsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("stairs")) {
-                        request = StairsFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("nutrition")) {
-                        request = NutritionFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-                        request = HydrationFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.toLowerCase().startsWith("nutrition.")) {
-                        request = NutritionXFunctions.prepareAggregateGroupByPeriodRequest(datatype, timeRange, period,
-                                dor);
-                    } else if (datatype.equalsIgnoreCase("weight")) {
-                        request = WeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("height")) {
-                        request = HeightFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("activity")) {
-                        Set<AggregateMetric<Duration>> metrics = new HashSet<>();
-                        metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
-                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("calories")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
-                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("calories.active")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
-                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("calories.basal")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
-                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("distance")) {
-                        Set<AggregateMetric<Length>> metrics = new HashSet<>();
-                        metrics.add(DistanceRecord.DISTANCE_TOTAL);
-                        request = new AggregateGroupByPeriodRequest(metrics, timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("sleep")) {
-                        request = SleepFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("heart_rate")) {
-                        request = HeartRateFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else if (datatype.equalsIgnoreCase("heart_rate.resting")) {
-                        request = HeartRateFunctions.prepareRestingAggregateGroupByPeriodRequest(timeRange, period,
-                                dor);
-                    } else if (datatype.equalsIgnoreCase("blood_pressure")) {
-                        request = BloodPressureFunctions.prepareAggregateGroupByPeriodRequest(timeRange, period, dor);
-                    } else {
-                        callbackContext.error("Datatype not recognized " + datatype);
-                        return;
-                    }
 
-                    List<AggregationResultGroupedByPeriod> response = BuildersKt.runBlocking(
-                            EmptyCoroutineContext.INSTANCE,
-                            (s, c) -> healthConnectClient.aggregateGroupByPeriod(request, c));
+                    // Calculate expected bucket count
+                    long expectedBuckets = calculateExpectedBuckets(stLDT.atZone(ZoneId.systemDefault()).toInstant(),
+                            etLDT.atZone(ZoneId.systemDefault()).toInstant(), null, period);
 
-                    Log.d(TAG, "Got data from query aggregated");
                     JSONArray retBucketsArr = new JSONArray();
 
-                    for (AggregationResultGroupedByPeriod bucket : response) {
-                        JSONObject retObject = new JSONObject();
-                        long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                        long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                        retObject.put("startDate", stbkt);
-                        retObject.put("endDate", etbkt);
-                        setAggregatedVal(datatype, retObject, bucket.getResult());
+                    if (expectedBuckets <= MAX_BUCKETS) {
+                        // No chunking needed - execute single query
+                        AggregateGroupByPeriodRequest request = createPeriodRequest(datatype, timeRange, period, dor);
+                        if (request == null) {
+                            callbackContext.error("Datatype not recognized " + datatype);
+                            return;
+                        }
 
-                        retBucketsArr.put(retObject);
+                        List<AggregationResultGroupedByPeriod> response = BuildersKt.runBlocking(
+                                EmptyCoroutineContext.INSTANCE,
+                                (s, c) -> healthConnectClient.aggregateGroupByPeriod(request, c));
+
+                        Log.d(TAG, "Got data from query aggregated");
+
+                        for (AggregationResultGroupedByPeriod bucket : response) {
+                            JSONObject retObject = new JSONObject();
+                            long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            retObject.put("startDate", stbkt);
+                            retObject.put("endDate", etbkt);
+                            setAggregatedVal(datatype, retObject, bucket.getResult());
+                            retBucketsArr.put(retObject);
+                        }
+                    } else {
+                        // Chunking needed - split into multiple queries
+                        Log.d(TAG, "Query requires " + expectedBuckets + " buckets, splitting into chunks");
+
+                        LocalDateTime currentStart = stLDT;
+                        LocalDateTime finalEnd = etLDT;
+
+                        // Calculate chunk size based on period type
+                        int chunksNeeded = (int) Math.ceil((double) expectedBuckets / SAFE_BUCKET_LIMIT);
+
+                        while (currentStart.isBefore(finalEnd)) {
+                            // Calculate chunk end time based on period type
+                            LocalDateTime chunkEnd;
+                            if (period.getDays() > 0) {
+                                chunkEnd = currentStart.plusDays((long) period.getDays() * SAFE_BUCKET_LIMIT);
+                            } else if (period.getMonths() > 0) {
+                                chunkEnd = currentStart.plusMonths((long) period.getMonths() * SAFE_BUCKET_LIMIT);
+                            } else if (period.getYears() > 0) {
+                                chunkEnd = currentStart.plusYears((long) period.getYears() * SAFE_BUCKET_LIMIT);
+                            } else {
+                                chunkEnd = finalEnd; // Fallback
+                            }
+
+                            // Don't exceed the final end time
+                            if (chunkEnd.isAfter(finalEnd)) {
+                                chunkEnd = finalEnd;
+                            }
+
+                            // Create time range for this chunk
+                            TimeRangeFilter chunkTimeRange = TimeRangeFilter.between(currentStart, chunkEnd);
+
+                            // Create and execute request for this chunk
+                            AggregateGroupByPeriodRequest chunkRequest = createPeriodRequest(datatype, chunkTimeRange,
+                                    period, dor);
+                            if (chunkRequest == null) {
+                                callbackContext.error("Datatype not recognized " + datatype);
+                                return;
+                            }
+
+                            List<AggregationResultGroupedByPeriod> chunkResponse = BuildersKt.runBlocking(
+                                    EmptyCoroutineContext.INSTANCE,
+                                    (s, c) -> healthConnectClient.aggregateGroupByPeriod(chunkRequest, c));
+
+                            // Add chunk results to the combined array
+                            for (AggregationResultGroupedByPeriod bucket : chunkResponse) {
+                                JSONObject retObject = new JSONObject();
+                                long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant()
+                                        .toEpochMilli();
+                                long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant()
+                                        .toEpochMilli();
+                                retObject.put("startDate", stbkt);
+                                retObject.put("endDate", etbkt);
+                                setAggregatedVal(datatype, retObject, bucket.getResult());
+                                retBucketsArr.put(retObject);
+                            }
+
+                            // Move to next chunk
+                            currentStart = chunkEnd;
+                        }
+
+                        Log.d(TAG, "Got data from chunked query aggregated, total buckets: " + retBucketsArr.length());
                     }
 
                     callbackContext.success(retBucketsArr);
                 } else {
-                    AggregateGroupByDurationRequest request;
-                    // DATA_TYPE: add here support for new data types
-                    if (datatype.equalsIgnoreCase("steps")) {
-                        request = StepsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("stairs")) {
-                        request = StairsFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("nutrition")) {
-                        request = NutritionFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("nutrition.water")) {
-                        request = HydrationFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.toLowerCase().startsWith("nutrition.")) {
-                        request = NutritionXFunctions.prepareAggregateGroupByDurationRequest(datatype, timeRange,
-                                duration, dor);
-                    } else if (datatype.equalsIgnoreCase("weight")) {
-                        request = WeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("height")) {
-                        request = HeightFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("activity")) {
-                        Set<AggregateMetric<Duration>> metrics = new HashSet<>();
-                        metrics.add(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL);
-                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("calories")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL);
-                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("calories.active")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL);
-                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("calories.basal")) {
-                        Set<AggregateMetric<Energy>> metrics = new HashSet<>();
-                        metrics.add(BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL);
-                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("distance")) {
-                        Set<AggregateMetric<Length>> metrics = new HashSet<>();
-                        metrics.add(DistanceRecord.DISTANCE_TOTAL);
-                        request = new AggregateGroupByDurationRequest(metrics, timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("sleep")) {
-                        request = SleepFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("heart_rate")) {
-                        request = HeartRateFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration, dor);
-                    } else if (datatype.equalsIgnoreCase("heart_rate.resting")) {
-                        request = HeartRateFunctions.prepareRestingAggregateGroupByDurationRequest(timeRange, duration,
-                                dor);
-                    } else if (datatype.equalsIgnoreCase("blood_pressure")) {
-                        request = BloodPressureFunctions.prepareAggregateGroupByDurationRequest(timeRange, duration,
-                                dor);
-                    } else {
-                        callbackContext.error("Datatype not recognized " + datatype);
-                        return;
-                    }
+                    // Duration-based bucketing (hour, minute)
+                    final int MAX_BUCKETS = 5000;
+                    final int SAFE_BUCKET_LIMIT = 4999; // Use 4999 to have a safe margin
 
-                    List<AggregationResultGroupedByDuration> response = BuildersKt.runBlocking(
-                            EmptyCoroutineContext.INSTANCE,
-                            (s, c) -> healthConnectClient.aggregateGroupByDuration(request, c));
+                    // Calculate expected bucket count
+                    long expectedBuckets = calculateExpectedBuckets(stZDT.toInstant(), etZDT.toInstant(), duration, null);
 
-                    Log.d(TAG, "Got data from query aggregated");
                     JSONArray retBucketsArr = new JSONArray();
 
-                    for (AggregationResultGroupedByDuration bucket : response) {
-                        JSONObject retObject = new JSONObject();
-                        long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                        long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                        retObject.put("startDate", stbkt);
-                        retObject.put("endDate", etbkt);
-                        setAggregatedVal(datatype, retObject, bucket.getResult());
+                    if (expectedBuckets <= MAX_BUCKETS) {
+                        // No chunking needed - execute single query
+                        AggregateGroupByDurationRequest request = createDurationRequest(datatype, timeRange, duration, dor);
+                        if (request == null) {
+                            callbackContext.error("Datatype not recognized " + datatype);
+                            return;
+                        }
 
-                        retBucketsArr.put(retObject);
+                        List<AggregationResultGroupedByDuration> response = BuildersKt.runBlocking(
+                                EmptyCoroutineContext.INSTANCE,
+                                (s, c) -> healthConnectClient.aggregateGroupByDuration(request, c));
+
+                        Log.d(TAG, "Got data from query aggregated");
+
+                        for (AggregationResultGroupedByDuration bucket : response) {
+                            JSONObject retObject = new JSONObject();
+                            long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            retObject.put("startDate", stbkt);
+                            retObject.put("endDate", etbkt);
+                            setAggregatedVal(datatype, retObject, bucket.getResult());
+                            retBucketsArr.put(retObject);
+                        }
+                    } else {
+                        // Chunking needed - split into multiple queries
+                        Log.d(TAG, "Query requires " + expectedBuckets + " buckets, splitting into chunks");
+
+                        long chunkDurationMs = duration.toMillis() * SAFE_BUCKET_LIMIT;
+                        Instant currentStart = stZDT.toInstant();
+                        Instant finalEnd = etZDT.toInstant();
+
+                        while (currentStart.isBefore(finalEnd)) {
+                            // Calculate chunk end time
+                            Instant chunkEnd = Instant.ofEpochMilli(
+                                    Math.min(currentStart.toEpochMilli() + chunkDurationMs, finalEnd.toEpochMilli()));
+
+                            // Create time range for this chunk
+                            TimeRangeFilter chunkTimeRange = TimeRangeFilter.between(currentStart, chunkEnd);
+
+                            // Create and execute request for this chunk
+                            AggregateGroupByDurationRequest chunkRequest = createDurationRequest(datatype, chunkTimeRange,
+                                    duration, dor);
+                            if (chunkRequest == null) {
+                                callbackContext.error("Datatype not recognized " + datatype);
+                                return;
+                            }
+
+                            List<AggregationResultGroupedByDuration> chunkResponse = BuildersKt.runBlocking(
+                                    EmptyCoroutineContext.INSTANCE,
+                                    (s, c) -> healthConnectClient.aggregateGroupByDuration(chunkRequest, c));
+
+                            // Add chunk results to the combined array
+                            for (AggregationResultGroupedByDuration bucket : chunkResponse) {
+                                JSONObject retObject = new JSONObject();
+                                long stbkt = bucket.getStartTime().atZone(ZoneId.systemDefault()).toInstant()
+                                        .toEpochMilli();
+                                long etbkt = bucket.getEndTime().atZone(ZoneId.systemDefault()).toInstant()
+                                        .toEpochMilli();
+                                retObject.put("startDate", stbkt);
+                                retObject.put("endDate", etbkt);
+                                setAggregatedVal(datatype, retObject, bucket.getResult());
+                                retBucketsArr.put(retObject);
+                            }
+
+                            // Move to next chunk
+                            currentStart = chunkEnd;
+                        }
+
+                        Log.d(TAG, "Got data from chunked query aggregated, total buckets: " + retBucketsArr.length());
                     }
 
                     callbackContext.success(retBucketsArr);

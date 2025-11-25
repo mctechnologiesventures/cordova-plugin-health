@@ -34,37 +34,21 @@ module.exports = {
       opts.endDate = opts.endDate.getTime();
     exec(
       (data) => {
-        // here we use a recursive function instead of a simple loop
-        // this is to deal with additional queries required for the special case
-        // of activity with calories and/or distance
-        finalizeResult = (i) => {
-          if (i >= data.length) {
-            // completed, return results
-            onSuccess(data);
-          } else {
-            // iterate
-            // convert timestamps to date
-            if (data[i].startDate)
-              data[i].startDate = new Date(data[i].startDate);
-            if (data[i].endDate) data[i].endDate = new Date(data[i].endDate);
+        // Check if we need async recursive processing (only for activity with calories/distance)
+        const needsAsyncRecursion =
+          opts.dataType == "activity" &&
+          (opts.includeCalories || opts.includeDistance);
 
-            if (opts.dataType == "sleep" && opts.sleepSession) {
-              // convert start and end dates for single stages
-              for (let stageI = 0; stageI < data[i].value.length; stageI++) {
-                data[i].value[stageI].startDate = new Date(
-                  data[i].value[stageI].startDate
-                );
-                data[i].value[stageI].endDate = new Date(
-                  data[i].value[stageI].endDate
-                );
-              }
-            }
-
-            if (
-              opts.dataType == "activity" &&
-              (opts.includeCalories || opts.includeDistance)
-            ) {
-              // we need to also fetch calories and/or distance
+        if (needsAsyncRecursion) {
+          // Use recursive function for async queries
+          finalizeResult = (i) => {
+            if (i >= data.length) {
+              onSuccess(data);
+            } else {
+              // convert timestamps to date
+              if (data[i].startDate)
+                data[i].startDate = new Date(data[i].startDate);
+              if (data[i].endDate) data[i].endDate = new Date(data[i].endDate);
 
               // helper function to get aggregated calories for that activity
               getCals = (onDone) => {
@@ -98,30 +82,41 @@ module.exports = {
               };
 
               if (opts.includeCalories) {
-                // calories are needed, fetch them
                 getCals(() => {
-                  // now get the distance, if needed
                   if (opts.includeDistance) {
-                    getDist(() => {
-                      finalizeResult(i + 1);
-                    });
+                    getDist(() => finalizeResult(i + 1));
                   } else {
-                    // no distance needed, move on
                     finalizeResult(i + 1);
                   }
                 });
               } else {
-                // distance only is needed
-                getDist(() => {
-                  finalizeResult(i + 1);
-                });
+                getDist(() => finalizeResult(i + 1));
               }
-            } else {
-              finalizeResult(i + 1);
+            }
+          };
+          finalizeResult(0);
+        } else {
+          // Use simple loop for all other cases (no async needed)
+          for (let i = 0; i < data.length; i++) {
+            // convert timestamps to date
+            if (data[i].startDate)
+              data[i].startDate = new Date(data[i].startDate);
+            if (data[i].endDate) data[i].endDate = new Date(data[i].endDate);
+
+            if (opts.dataType == "sleep" && opts.sleepSession) {
+              // convert start and end dates for single stages
+              for (let stageI = 0; stageI < data[i].value.length; stageI++) {
+                data[i].value[stageI].startDate = new Date(
+                  data[i].value[stageI].startDate
+                );
+                data[i].value[stageI].endDate = new Date(
+                  data[i].value[stageI].endDate
+                );
+              }
             }
           }
-        };
-        finalizeResult(0);
+          onSuccess(data);
+        }
       },
       onError,
       "health",
